@@ -10,28 +10,29 @@
             }
     #success-popup {
       position: fixed;
-      left: 50%;
+      right: 20px;
       bottom: 20px;
-      transform: translateX(-50%);
       background: white;
-      padding: 20px;
-      border-radius: 8px 8px 0 0;
-      box-shadow: 0 2px 4px #757575;
-      font-size: 16px;
+      padding: 12px 18px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(82,79,129,0.10);
+      font-size: 15px;
       z-index: 9999;
-      max-width: 400px;
-      min-width: 250px;
       color: #524f81;
       font-family: "regular-clarivate", Arial, sans-serif;
+      border: 1px solid #e0e0e0;
+      width: auto;
+      min-width: unset;
+      max-width: 90vw;
     }
     .success-btn {
-      padding: 6px 18px;
-      margin: 0 8px;
-      border: 1px solid #757575;
-      background-color: #f5f5f5;
-      border-radius: 5px;
+      padding: 2px 14px;
+      margin: 0 4px;
+      border: 1px solid #b0b0b0;
+      background-color: #f8f8f8;
+      border-radius: 3px;
       cursor: pointer;
-      font-size: 16px;
+      font-size: 13px;
       color: #524f81;
       transition: background 0.2s, color 0.2s;
     }
@@ -43,25 +44,20 @@
     body {
       margin: 0;
       padding: 0;
-      min-width: 250px;
-      min-height: 120px;
+      background: transparent;
     }
   </style>
 </head>
 <body>
   <div id="success-popup">
-    <div style="text-align:center; margin-bottom: 10px; color: #888;">About the result you've just opened:</div>
-    <div style="text-align:center; margin-bottom: 10px;">
-      <strong>Will you or others of your collaborators likely follow-up and do more research with this result?
-      </strong>
+    <div style="text-align:center; margin-bottom: 8px; color: #888;">About the result you've just opened:</div>
+    <div style="text-align:center; margin-bottom: 8px;">
+      <strong>Will you likely follow-up and do more research on this result?</strong>
     </div>
     <div style="display: flex; justify-content: center; align-items: center;">
       <button class="success-btn" data-score="0">No</button>
       <button class="success-btn" data-score="1">Yes</button>
     </div>
   </div>
-  <script>
-
-  </script>
 </body>
 </html>

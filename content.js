@@ -5,7 +5,7 @@ const userTestingObj = {
         QAscore:"",
         novelty:"",
         success:"",
-        nodeFlag:""
+        flags:[]
       },
       session:{
         timestamp: Date.now(),
@@ -18,173 +18,16 @@ const userTestingObj = {
 function updateResultUserTestingFields(field, value) {
   if ('result' in userTestingObj) { // Use quotes around 'result'
      if (field in userTestingObj.result) { // Use .result, not [result]
+      if (field === "flags"){
+        userTestingObj.result[field].append(value);
+      }else{
       userTestingObj.result[field] = value;
+      }
      }
   }
 }
-// function updateResultUserTestingFields(field, value) {
-//   if ('result' in userTestingObj) {
-//     userTestingObj.result[field] = value;
-//   }
-// }
-
-// To retrieve it later
-// const stored = localStorage.getItem("userFeedback");
-// const parsed = JSON.parse(stored);
-// console.log(parsed);
 
 
-
-function showQAPopup() {
-  // Remove any existing popup
-  let oldPopup = document.getElementById('QA-popup');
-  if (oldPopup) oldPopup.remove();
-
-  // Return a Promise!
-  return fetch(chrome.runtime.getURL('QAscore.html'))
-    .then(response => response.text())
-    .then(html => {
-      return new Promise((resolve) => {
-        let popup = document.createElement('div');
-        popup.id = 'QA-popup';
-        popup.innerHTML = html;
-        popup.style.position = 'fixed';
-        popup.style.right = '0';
-        popup.style.bottom = '0';
-        popup.style.width = 'fit-content';
-        popup.style.background = 'white';
-        popup.style.padding = '20px';
-        popup.style.borderRadius = '8px';
-        popup.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.2)';
-        popup.style.fontSize = '14px';
-        popup.style.height = 'auto';
-        popup.style.margin = '0 40px 40px 0';
-
-        document.body.appendChild(popup);
-
-        // Add click event listeners to all .nps-btn buttons
-        popup.querySelectorAll('.nps-btn').forEach(btn => {
-          btn.addEventListener('click', function(e) {
-            e.preventDefault();
-            let qa_feedback = parseInt(btn.getAttribute('data-score'), 10);
-            updateResultUserTestingFields("QAscore", qa_feedback);
-            popup.remove();
-            resolve(qa_feedback);
-          });
-        });
-
-        setTimeout(() => {
-          if (popup.parentNode) {
-            popup.remove();
-            resolve(null); // resolve with null if timeout
-          }
-        }, 15000);
-      });
-    });
-}
-function showNoveltyPopup() {
-  // Remove any existing popup
-  let oldPopup = document.getElementById('novelty-popup');
-  if (oldPopup) oldPopup.remove();
-
-  return fetch(chrome.runtime.getURL('novelty.html'))
-    .then(response => response.text())
-    .then(html => {
-      return new Promise((resolve) => {
-        let popup = document.createElement('div');
-        popup.id = 'novelty-popup';
-        popup.innerHTML = html;
-        popup.style.position = 'fixed';
-        popup.style.right = '0';
-        popup.style.bottom = '0';
-        popup.style.width = 'fit-content';
-        popup.style.background = 'white';
-        popup.style.padding = '20px';
-        popup.style.borderRadius = '8px';
-        popup.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.2)';
-        popup.style.fontSize = '14px';
-        popup.style.height = 'auto';
-        popup.style.margin = '0 40px 40px 0';
-
-        document.body.appendChild(popup);
-
-        // Add click event listeners to all .novelty-btn buttons
-        popup.querySelectorAll('.novelty-btn').forEach(btn => {
-          btn.addEventListener('click', function(e) {
-            e.preventDefault();
-            document.querySelectorAll('.novelty-btn').forEach(b => b.classList.remove('selected'));
-            btn.classList.add('selected');
-            let noveltyFeedback = parseInt(btn.getAttribute('data-score'),10);
-            updateResultUserTestingFields("novelty", noveltyFeedback);
-            popup.remove();
-            resolve(noveltyFeedback);
-          });
-          setTimeout(() => {
-            if (popup.parentNode) {
-              popup.remove();
-              resolve(null); // resolve with null if timeout
-            }
-          }, 15000);
-        });
-
-      });
-    });
-  }
-function showSuccessPopup() {
-  // Remove any existing popup
-  let oldPopup = document.getElementById('success-popup');
-  if (oldPopup) oldPopup.remove();
-
-  return fetch(chrome.runtime.getURL('success.html'))
-    .then(response => response.text())
-    .then(html => {
-      return new Promise((resolve) => {
-        let popup = document.createElement('div');
-        popup.id = 'success-popup';
-        popup.innerHTML = html;
-        popup.style.position = 'fixed';
-        popup.style.right = '0';
-        popup.style.bottom = '0';
-        popup.style.width = 'fit-content';
-        popup.style.background = 'white';
-        popup.style.padding = '20px';
-        popup.style.borderRadius = '8px';
-        popup.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.2)';
-        popup.style.fontSize = '14px';
-        popup.style.height = 'auto';
-        popup.style.margin = '0 40px 40px 0';
-
-        document.body.appendChild(popup);
-
-        let resolved = false; // To prevent double resolve
-
-        // Add click event listeners to all .success-btn buttons
-        popup.querySelectorAll('.success-btn').forEach(btn => {
-          btn.addEventListener('click', function(e) {
-            e.preventDefault();
-            if (resolved) return; // Prevent double execution
-            document.querySelectorAll('.success-btn').forEach(b => b.classList.remove('selected'));
-            btn.classList.add('selected');
-            let successFeedback = parseInt(btn.getAttribute('data-score'),10);
-            updateResultUserTestingFields("success", successFeedback);
-            popup.remove();
-            resolved = true;
-            resolve(successFeedback);
-          });
-        });
-
-        // Timeout to auto-close the popup if no answer
-        setTimeout(() => {
-          if (popup.parentNode && !resolved) {
-            popup.remove();
-            resolved = true;
-            resolve(null); // resolve with null if timeout
-          }
-        }, 15000);
-
-      });
-    });
-}
 function showPopup(type) {
   // Remove any existing popup of this type
   let oldPopup = document.getElementById(`${type}-popup`);
@@ -255,7 +98,7 @@ function setupMutationObserver() {
           let isNowVisible = panel.getAttribute('aria-hidden') === 'false';
           let wasHidden = mutation.oldValue === 'true';
           if (isNowVisible && wasHidden) {
-            showQAPopup('QA').then(feedback => {
+            showPopup('QA').then(feedback => {
               if (feedback === 0) {
                 // showPopup1();
               } else if (feedback === 10) {
@@ -303,7 +146,7 @@ const flagTypes = [
   { type: "wrong_link", label: "Wrong Link", emoji: "🔗" }
 ];
 
-const observer = new MutationObserver(mutations => {
+const tooltipObserver = new MutationObserver(mutations => {
   mutations.forEach(mutation => {
     mutation.addedNodes.forEach(node => {
       if (
@@ -311,23 +154,36 @@ const observer = new MutationObserver(mutations => {
         node.getAttribute('role') === 'tooltip' &&
         !node.querySelector('.wrong-flag-btn')
       ) {
-        // Find the related name container using data-tooltip-id
+        // Find the related container using data-tooltip-id
         const tooltipId = node.id;
-        const nameContainer = document.querySelector(`[data-tooltip-id="${tooltipId}"]`);
-        if (!nameContainer) return;
+        const container = document.querySelector(`[data-tooltip-id="${CSS.escape(tooltipId)}"]`);
+        if (!container) return;
 
-        const nodeId = nameContainer.getAttribute('data-node-id');
-        // Try to get the label text (adjust selector as needed)
-        let label = "";
-        const labelSpan = nameContainer.querySelector('._text_1o93p_198');
-        if (labelSpan) {
-          label = labelSpan.innerText.trim();
+        // Determine flag type: node or predicate
+        let flagField, entityId, label;
+        if (container.className.includes("nameContainer")) {
+          flagField = "nodeFlag";
+          entityId = container.getAttribute('data-node-id');
+          // Try to get the label text
+          const labelSpan = container.querySelector('._text_1o93p_198');
+          label = labelSpan ? labelSpan.innerText.trim() : container.innerText.trim();
+        } else if (container.className.includes("predicateContainer")) {
+          flagField = "predicateFlag";
+          // entityId = container.getAttribute('data-tooltip-id'); 
+          
+          let rawId = container.getAttribute('data-tooltip-id');
+          entityId = rawId.replace(/:r[\w\d]+:?$/, '');
+
+
+
+          const predLabelSpan = container.querySelector('._predLabel_cegci_68');
+          label = predLabelSpan ? predLabelSpan.innerText.trim() : container.innerText.trim();
         } else {
-          // fallback: get all text
-          label = nameContainer.innerText.trim();
+          // Unknown container type; skip
+          return;
         }
 
-        // 3. Inject flag buttons
+        // Inject flag buttons
         flagTypes.forEach(flag => {
           const flagBtn = document.createElement('button');
           flagBtn.innerHTML = `${flag.emoji} ${flag.label}`;
@@ -343,14 +199,13 @@ const observer = new MutationObserver(mutations => {
             padding: 2px 6px;
             display: inline-block;
           `;
-          // Use mousedown to catch before tooltip disappears
           flagBtn.addEventListener('mousedown', e => {
             e.stopPropagation();
             e.preventDefault();
             // Compose summary
             const summary = `
               You are about to flag:
-              - Node ID: ${nodeId}
+              - ${flagField === "nodeFlag" ? "Node ID" : "Predicate ID"}: ${entityId}
               - Label: ${label}
               - Issue type: ${flag.label}
 
@@ -358,8 +213,8 @@ const observer = new MutationObserver(mutations => {
             `.trim();
             if (confirm(summary)) {
               // Update feedback object
-              updateResultUserTestingFields("nodeFlag", {
-                node_ID: nodeId,
+              updateResultUserTestingFields(flagField, {
+                id: entityId,
                 label: label,
                 issue_type: flag.type
               });
@@ -370,11 +225,11 @@ const observer = new MutationObserver(mutations => {
               flagBtn.disabled = true;
             }
           });
-          // Add to tooltip
           node.appendChild(flagBtn);
         });
       }
     });
   });
 });
-observer.observe(document.body, { childList: true, subtree: true });
+tooltipObserver.observe(document.body, { childList: true, subtree: true });
+
