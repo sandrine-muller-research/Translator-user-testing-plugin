@@ -1,0 +1,27 @@
+{
+  "name": "Translator UX",
+  "description": "Chrome extension for Translator feedback",
+  "version": "0.2",
+  "manifest_version": 3,
+  "icons": {
+    "16": "translator-testing_favicon.png",
+    "48": "translator-testing_favicon.png",
+    "128": "translator-testing_favicon.png"
+  },
+  "action": {
+    "default_popup": "",
+    "default_icon": "translator-testing_favicon.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"]
+    }
+  ],
+  "web_accessible_resources": [
+  {
+    "resources": ["QAscore.html","novelty.html","success.html"],
+    "matches": ["<all_urls>"]
+  }
+]
+}
