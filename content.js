@@ -344,18 +344,18 @@ function setupMutationObserver() {
               }
 
               // Extract and save data from previous panel
-              const tableItem = currentOpenPanel.closest('[class*="tableItem"]');
-              if (tableItem) {
-                const nameContainer = tableItem.querySelector('[class*="nameContainer"]');
-                const predicateContainer = tableItem.querySelector('[class*="predicateContainer"]');
+              // const tableItem = currentOpenPanel.closest('[class*="tableItem"]');
+              // if (tableItem) {
+              //   const nameContainer = tableItem.querySelector('[class*="nameContainer"]');
+              //   const predicateContainer = tableItem.querySelector('[class*="predicateContainer"]');
                 
-                const object = nameContainer?.getAttribute('data-node-id') || null;
-                const predicate = predicateContainer?.getAttribute('data-tooltip-id')?.replace(/:r[\w\d]+:?$/, '') || null;
+              //   const object = nameContainer?.getAttribute('data-node-id') || null;
+              //   const predicate = predicateContainer?.getAttribute('data-tooltip-id')?.replace(/:r[\w\d]+:?$/, '') || null;
 
-                console.log('Saving previous panel data:', { object, predicate });
-                updateResultUserTestingFields("object", object);
-                updateResultUserTestingFields("predicate", predicate);
-              }
+              //   console.log('Saving previous panel data:', { object, predicate });
+              //   updateResultUserTestingFields("object", object);
+              //   updateResultUserTestingFields("predicate", predicate);
+              // }
 
               // Cleanup previous panel
               printAndClearTestingObject();
