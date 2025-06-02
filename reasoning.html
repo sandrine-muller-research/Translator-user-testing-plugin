@@ -46,20 +46,35 @@
       padding: 0;
       background: transparent;
     }
+    .popup-close {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    font-size: 24px;
+    font-weight: bold;
+    color: #888;
+    cursor: pointer;
+    z-index: 10;
+    transition: color 0.2s;
+    }
+    .popup-close:hover {
+    color: #e74c3c;
+    }
   </style>
 </head>
 <body>
   <div id="reasoning-popup">
+    <span class="popup-close" title="Close">&times;</span>
     <div style="text-align:center; margin-bottom: 8px; color: #888;">About the result you've just opened:</div>
     <div style="text-align:center; margin-bottom: 8px;">
       <strong>Why doesn’t it make perfect sense?</strong>
     </div>
     <div style="display: flex; justify-content: center; align-items: center;">
-      <button class="reasoning-btn" data-score="0">The information given to me is not sufficient for me to evaluate.</button>
-      <button class="reasoning-btn" data-score="1">The reasoning could be true but is rather not specific to answer the question.</button>
-      <button class="reasoning-btn" data-score="2">The reasoning chain of thought is unreasonable.</button>
-      <button class="reasoning-btn" data-score="3">The reasoning leads to the opposite effect of the question.</button>
-      <button class="reasoning-btn" data-score="4">None of these.</button>
+      <button class="reasoning-btn" data-score="0">🤔 The information given to me is not sufficient for me to evaluate.</button>
+      <button class="reasoning-btn" data-score="1">🧐 The reasoning could be true but is rather not specific to answer the question.</button>
+      <button class="reasoning-btn" data-score="2">❌ The reasoning chain of thought is unreasonable.</button>
+      <button class="reasoning-btn" data-score="3">🔄 The reasoning leads to the opposite effect of the question.</button>
+      <button class="reasoning-btn" data-score="4">🤷‍♂️ None of these.</button>
     </div>
   </div>
 </body>

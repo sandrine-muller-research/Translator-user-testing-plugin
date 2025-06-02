@@ -1,34 +1,90 @@
 const nameContainers = document.querySelectorAll('span[class*="_nameContainer_"]');
 let workflowCancelled = false;
+const PK = getPkFromUrl(window.location.href);
+let currentOpenPanel = null;
+let currentWorkflowPromise = null;
 
-const userTestingObj = {
+
+const userTestingObjTemplate = {
       result:{
-        QA:"",
-        novelty:"",
-        success:"",
-        reasoning:"",
-        datasource:"",
-        datavalueNeed:"",
-        datavalueUniqueness:"",
+        object:" ",
+        predicate:" ",
+        QA:" ",
+        novelty:" ",
+        success:" ",
+        reasoning:" ",
+        datasource:" ",
+        datavalueNeed:" ",
+        datavalueUniqueness:" ",
         flags:[]
       },
       session:{
         timestamp: Date.now(),
         query:{
-          pk: "" ////////// TO IMPLEMENT
+          pk: PK
         }
       }
 };
 
+function getPkFromUrl(url) {
+  try {
+    const parsedUrl = new URL(url);
+    const params = new URLSearchParams(parsedUrl.search);
+    return params.get('q'); // returns the value after q=
+  } catch (e) {
+    return null; // In case of an invalid URL
+  }
+}
+
+function resetUserTestingObj() {
+  userTestingObj = JSON.parse(JSON.stringify(userTestingObjTemplate));
+  userTestingObj.session.timestamp = Date.now();
+  userTestingObj.session.pk = PK;
+}
+
+
+function sendToGoogleForm(userTestingObj) {
+  const formUrl = 'https://docs.google.com/forms/u/0/d/e/1FAIpQLSeie6bjl9FReefkNyvvcQ53N-32lE7pF92D8BOm6RSdqijvow/formResponse';
+
+  // Replace these with your actual entry IDs!
+  const formData = new URLSearchParams();
+  formData.append('entry.1142791448', userTestingObj.result.QA);
+  formData.append('entry.455615436', userTestingObj.result.QA);
+  formData.append('entry.1703541576', userTestingObj.result.QA);
+  formData.append('entry.652081313', userTestingObj.result.novelty);
+  formData.append('entry.1262337293', userTestingObj.result.success);
+  formData.append('entry.1304457557', userTestingObj.result.reasoning);
+  formData.append('entry.17482856', userTestingObj.result.datasource);
+  formData.append('entry.1912985814', userTestingObj.result.datavalueNeed);
+  formData.append('entry.1319177885', userTestingObj.result.datavalueUniqueness);
+  formData.append('entry.1022165891', userTestingObj.session.timestamp);
+  formData.append('entry.1257738886', userTestingObj.session.query.pk);
+  formData.append('entry.52800901', JSON.stringify(userTestingObj.result.flags)); // flags as JSON
+
+  fetch(formUrl, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: formData
+  });
+
+}
+
+
+
 function printAndClearTestingObject() {
   console.log('Testing object:', userTestingObj);
   closeAllPopups()
+  sendToGoogleForm(userTestingObj)
+  resetUserTestingObj()
 
 }
 
 function updateResultUserTestingFields(field, value) {
-  if ('result' in userTestingObj) { // Use quotes around 'result'
-     if (field in userTestingObj.result) { // Use .result, not [result]
+  if ('result' in userTestingObj) {
+     if (field in userTestingObj.result) {
       if (field === "flags"){
         userTestingObj.result[field].push(value);
       }else{
@@ -36,29 +92,6 @@ function updateResultUserTestingFields(field, value) {
       }
      }
   }
-}
-
-function waitForPanelClose(panel) {
-  return new Promise(resolve => {
-    // If the panel is already closed, resolve immediately
-    if (panel.getAttribute('aria-hidden') === 'true') {
-      resolve();
-      return;
-    }
-    // Otherwise, observe for changes
-    const observer = new MutationObserver(mutations => {
-      mutations.forEach(mutation => {
-        if (
-          mutation.attributeName === 'aria-hidden' &&
-          panel.getAttribute('aria-hidden') === 'true'
-        ) {
-          observer.disconnect();
-          resolve();
-        }
-      });
-    });
-    observer.observe(panel, { attributes: true, attributeFilter: ['aria-hidden'] });
-  });
 }
 
 
@@ -104,6 +137,9 @@ function waitForPanelClose(panel) {
 }
 
 async function collectAllFeedback(panel) {
+
+  resetUserTestingObj()
+
   // Start both feedback processes
   const workflowPromise = runWorkflow(panel); // Resolves when workflow is done
   const flagPromise = waitForPanelClose(panel); // Resolves when panel is closed
@@ -121,44 +157,55 @@ async function collectAllFeedback(panel) {
 async function runWorkflow(panel) {
   let workflowCancelled = false;
 
-  // Monitor for panel close
-  const panelObserver = new MutationObserver(mutations => {
-    mutations.forEach(mutation => {
-      if (
-        mutation.attributeName === 'aria-hidden' &&
-        panel.getAttribute('aria-hidden') === 'true'
-      ) {
-        workflowCancelled = true;
-        closeAllPopups();
-        panelObserver.disconnect();
-      }
+  // Promise that resolves when the panel is closed
+  const panelClosedPromise = new Promise(resolve => {
+    const panelObserver = new MutationObserver(mutations => {
+      mutations.forEach(mutation => {
+        if (
+          mutation.attributeName === 'aria-hidden' &&
+          panel.getAttribute('aria-hidden') === 'true'
+        ) {
+          workflowCancelled = true;
+          closeAllPopups();
+          panelObserver.disconnect();
+          resolve('cancelled'); // <-- Resolves the promise
+        }
+      });
     });
+    panelObserver.observe(panel, { attributes: true, attributeFilter: ['aria-hidden'] });
   });
-  panelObserver.observe(panel, { attributes: true, attributeFilter: ['aria-hidden'] });
+
+  // Helper to race workflow steps against panel close
+  async function raceStep(popupName) {
+    return Promise.race([
+      showPopup(popupName),
+      panelClosedPromise
+    ]);
+  }
 
   // --- Workflow steps ---
-  let qaFeedback = await showPopup('QA');
-  if (workflowCancelled || qaFeedback === '__CANCEL__') return;
+  let qaFeedback = await raceStep('QA');
+  if (workflowCancelled || qaFeedback === '__CANCEL__' || qaFeedback === 'cancelled') return 'cancelled';
 
   if (qaFeedback === 0) {
     return;
   } else if (qaFeedback === 10) {
-    let noveltyFeedback = await showPopup('novelty');
-    if (workflowCancelled || noveltyFeedback === '__CANCEL__') return;
+    let noveltyFeedback = await raceStep('novelty');
+    if (workflowCancelled || noveltyFeedback === '__CANCEL__' || noveltyFeedback === 'cancelled') return 'cancelled';
     if (noveltyFeedback === 1) {
-      await showPopup('success');
+      await raceStep('success');
       return;
     }
   } else {
-    let reasoningFeedback = await showPopup('reasoning');
-    if (workflowCancelled || reasoningFeedback === '__CANCEL__') return;
+    let reasoningFeedback = await raceStep('reasoning');
+    if (workflowCancelled || reasoningFeedback === '__CANCEL__' || reasoningFeedback === 'cancelled') return 'cancelled';
     if (reasoningFeedback === 0) {
-      await showPopup('datasource');
-      if (workflowCancelled) return;
-      await showPopup('datavalueNeed');
-      if (workflowCancelled) return;
-      await showPopup('datavalueUniqueness');
-      if (workflowCancelled) return;
+      await raceStep('datasource');
+      if (workflowCancelled) return 'cancelled';
+      await raceStep('datavalueNeed');
+      if (workflowCancelled) return 'cancelled';
+      await raceStep('datavalueUniqueness');
+      if (workflowCancelled) return 'cancelled';
       return;
     } else {
       return;
@@ -265,7 +312,6 @@ async function showPopup(type) {
 const observedPanels = new Set();
 
 function setupMutationObserver() {
-  // Find all elements with accordionPanel in their class and observe aria-hidden change of status
   let panels = document.querySelectorAll('[class*="accordionPanel"]');
 
   panels.forEach(panel => {
@@ -278,8 +324,31 @@ function setupMutationObserver() {
           let isNowVisible = panel.getAttribute('aria-hidden') === 'false';
           let wasHidden = mutation.oldValue === 'true';
           if (isNowVisible && wasHidden) {
-            // Start the feedback workflow when the panel is opened!
-            collectAllFeedback(panel);
+            // If another panel is open, close it and finish its workflow first
+            if (currentOpenPanel && currentOpenPanel !== panel) {
+              // Optionally, visually close the previous panel
+              currentOpenPanel.setAttribute('aria-hidden', 'true');
+              // Wait for its workflow to finish (if any)
+              if (currentWorkflowPromise) {
+                await currentWorkflowPromise;
+              }
+              // Send data and cleanup (if not already handled in workflow)
+              const tableItem = currentOpenPanel.closest('[class*="tableItem"]');
+              console.log('tableItem:', tableItem);
+              const object = extractNodeIdFromTableItem(tableItem);
+              const predicate = extractPredicateIdFromTableItem(tableItem);
+              console.log('object:', object);
+              console.log('predicate:', predicate);
+              updateResultUserTestingFields("object", object);
+              updateResultUserTestingFields("predicate", predicate);
+              printAndClearTestingObject();
+              closeAllPopups();
+              closePanel(currentOpenPanel);
+            }
+
+            // Now start workflow for the new panel
+            currentOpenPanel = panel;
+            currentWorkflowPromise = collectAllFeedback(panel);
           }
         }
       }
@@ -292,6 +361,7 @@ function setupMutationObserver() {
     });
   });
 }
+
 
 
 setupMutationObserver();
@@ -315,6 +385,24 @@ const flagTypes = [
   { type: "wrong_biolink_category", label: "Wrong Biolink Category", emoji: "📕" },
   { type: "wrong_link", label: "Wrong Link", emoji: "🔗" }
 ];
+
+function extractNodeIdFromTableItem(tableItem) {
+  if (!tableItem) return null;
+  const container = tableItem.querySelector('[class*="nameContainer"]');
+  if (!container) return null;
+  return container.getAttribute('data-node-id');
+}
+
+
+function extractPredicateIdFromTableItem(tableItem) {
+  if (!tableItem) return null;
+  const container = tableItem.querySelector('[class*="predicateContainer"]');
+  if (!container) return null;
+  let rawId = container.getAttribute('data-tooltip-id');
+  if (!rawId) return null;
+  return rawId.replace(/:r[\w\d]+:?$/, '');
+}
+
 
 const tooltipObserver = new MutationObserver(mutations => {
   mutations.forEach(mutation => {
@@ -396,12 +484,7 @@ const tooltipObserver = new MutationObserver(mutations => {
                 entityId: entityId,
                 label: label
               });
-              // updateResultUserTestingFields(flagField, {
-              //   "id": entityId,
-              //   "label": label,
-              //   "issue_type": flag.type
-              // });
-              // Optionally, provide visual feedback
+
               flagBtn.style.background = "#e74c3c";
               flagBtn.style.color = "#fff";
               flagBtn.innerHTML = "✔️ Reported";
