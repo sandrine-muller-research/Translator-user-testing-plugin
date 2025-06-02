@@ -48,8 +48,8 @@ function sendToGoogleForm(userTestingObj) {
 
   // Replace these with your actual entry IDs!
   const formData = new URLSearchParams();
-  formData.append('entry.1142791448', userTestingObj.result.QA);
-  formData.append('entry.455615436', userTestingObj.result.QA);
+  formData.append('entry.1142791448', userTestingObj.result.object);
+  formData.append('entry.455615436', userTestingObj.result.predicate);
   formData.append('entry.1703541576', userTestingObj.result.QA);
   formData.append('entry.652081313', userTestingObj.result.novelty);
   formData.append('entry.1262337293', userTestingObj.result.success);
@@ -141,6 +141,10 @@ async function collectAllFeedback(panel) {
   resetUserTestingObj()
 
   // Start both feedback processes
+  const object = extractNodeIdFromTableItem(panel)
+  const predicate = extractPredicateIdFromTableItem(panel)
+  updateResultUserTestingFields('object', object)
+  updateResultUserTestingFields('predicate', predicate)
   const workflowPromise = runWorkflow(panel); // Resolves when workflow is done
   const flagPromise = waitForPanelClose(panel); // Resolves when panel is closed
 
@@ -312,43 +316,61 @@ async function showPopup(type) {
 const observedPanels = new Set();
 
 function setupMutationObserver() {
-  let panels = document.querySelectorAll('[class*="accordionPanel"]');
+  const panels = document.querySelectorAll('[class*="accordionPanel"]');
 
   panels.forEach(panel => {
-    if (observedPanels.has(panel)) return; // Prevent double-observing
+    if (observedPanels.has(panel)) return;
     observedPanels.add(panel);
 
-    let observer = new MutationObserver(async function(mutations) {
+    const observer = new MutationObserver(async mutations => {
       for (const mutation of mutations) {
         if (mutation.attributeName === 'aria-hidden') {
-          let isNowVisible = panel.getAttribute('aria-hidden') === 'false';
-          let wasHidden = mutation.oldValue === 'true';
+          const isNowVisible = panel.getAttribute('aria-hidden') === 'false';
+          const wasHidden = mutation.oldValue === 'true';
+
           if (isNowVisible && wasHidden) {
-            // If another panel is open, close it and finish its workflow first
+            // Handle previous panel if different from new one
             if (currentOpenPanel && currentOpenPanel !== panel) {
-              // Optionally, visually close the previous panel
+              // Visual close and await completion
               currentOpenPanel.setAttribute('aria-hidden', 'true');
-              // Wait for its workflow to finish (if any)
+              
+              // Wait for existing workflow to finish
               if (currentWorkflowPromise) {
-                await currentWorkflowPromise;
+                try {
+                  await currentWorkflowPromise;
+                } catch (e) {
+                  console.error('Previous workflow error:', e);
+                }
               }
-              // Send data and cleanup (if not already handled in workflow)
+
+              // Extract and save data from previous panel
               const tableItem = currentOpenPanel.closest('[class*="tableItem"]');
-              console.log('tableItem:', tableItem);
-              const object = extractNodeIdFromTableItem(tableItem);
-              const predicate = extractPredicateIdFromTableItem(tableItem);
-              console.log('object:', object);
-              console.log('predicate:', predicate);
-              updateResultUserTestingFields("object", object);
-              updateResultUserTestingFields("predicate", predicate);
+              if (tableItem) {
+                const nameContainer = tableItem.querySelector('[class*="nameContainer"]');
+                const predicateContainer = tableItem.querySelector('[class*="predicateContainer"]');
+                
+                const object = nameContainer?.getAttribute('data-node-id') || null;
+                const predicate = predicateContainer?.getAttribute('data-tooltip-id')?.replace(/:r[\w\d]+:?$/, '') || null;
+
+                console.log('Saving previous panel data:', { object, predicate });
+                updateResultUserTestingFields("object", object);
+                updateResultUserTestingFields("predicate", predicate);
+              }
+
+              // Cleanup previous panel
               printAndClearTestingObject();
               closeAllPopups();
               closePanel(currentOpenPanel);
             }
 
-            // Now start workflow for the new panel
+            // Start new workflow
             currentOpenPanel = panel;
-            currentWorkflowPromise = collectAllFeedback(panel);
+            currentWorkflowPromise = collectAllFeedback(panel)
+              .catch(e => console.error('Workflow error:', e))
+              .finally(() => {
+                currentOpenPanel = null;
+                currentWorkflowPromise = null;
+              });
           }
         }
       }
