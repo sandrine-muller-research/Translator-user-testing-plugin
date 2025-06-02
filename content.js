@@ -1,4 +1,5 @@
 const nameContainers = document.querySelectorAll('span[class*="_nameContainer_"]');
+let workflowCancelled = false;
 
 const userTestingObj = {
       result:{
@@ -20,8 +21,8 @@ const userTestingObj = {
 };
 
 function printAndClearTestingObject() {
-  console.log('************function called!********');
   console.log('Testing object:', userTestingObj);
+  closeAllPopups()
 
 }
 
@@ -37,6 +38,34 @@ function updateResultUserTestingFields(field, value) {
   }
 }
 
+function waitForPanelClose(panel) {
+  return new Promise(resolve => {
+    // If the panel is already closed, resolve immediately
+    if (panel.getAttribute('aria-hidden') === 'true') {
+      resolve();
+      return;
+    }
+    // Otherwise, observe for changes
+    const observer = new MutationObserver(mutations => {
+      mutations.forEach(mutation => {
+        if (
+          mutation.attributeName === 'aria-hidden' &&
+          panel.getAttribute('aria-hidden') === 'true'
+        ) {
+          observer.disconnect();
+          resolve();
+        }
+      });
+    });
+    observer.observe(panel, { attributes: true, attributeFilter: ['aria-hidden'] });
+  });
+}
+
+
+function closeAllPopups() {
+  document.querySelectorAll('[id$="-popup"]').forEach(popup => popup.remove());
+}
+
 function isValidURL(str) {
   try {
     new URL(str);
@@ -46,7 +75,100 @@ function isValidURL(str) {
   }
 }
 
-function showPopup(type) {
+function closePanel(panel) {
+  panel.setAttribute('aria-hidden', 'true');
+}
+
+
+function waitForPanelClose(panel) {
+  return new Promise(resolve => {
+    if (panel.getAttribute('aria-hidden') === 'true') {
+      console.log("Panel already closed at start");
+      resolve();
+      return;
+    }
+    const observer = new MutationObserver(mutations => {
+      mutations.forEach(mutation => {
+        console.log("Mutation observed:", mutation);
+        if (
+          mutation.attributeName === 'aria-hidden' &&
+          panel.getAttribute('aria-hidden') === 'true'
+        ) {
+          observer.disconnect();
+          resolve();
+        }
+      });
+    });
+    observer.observe(panel, { attributes: true, attributeFilter: ['aria-hidden'] });
+  });
+}
+
+async function collectAllFeedback(panel) {
+  // Start both feedback processes
+  const workflowPromise = runWorkflow(panel); // Resolves when workflow is done
+  const flagPromise = waitForPanelClose(panel); // Resolves when panel is closed
+
+  // Wait for both to finish
+  await Promise.all([workflowPromise, flagPromise]);
+
+  // Now print and clear, regardless of whether any flags were recorded
+  printAndClearTestingObject();
+  closeAllPopups();
+  closePanel(panel); // Optionally, if not already closed
+}
+
+
+async function runWorkflow(panel) {
+  let workflowCancelled = false;
+
+  // Monitor for panel close
+  const panelObserver = new MutationObserver(mutations => {
+    mutations.forEach(mutation => {
+      if (
+        mutation.attributeName === 'aria-hidden' &&
+        panel.getAttribute('aria-hidden') === 'true'
+      ) {
+        workflowCancelled = true;
+        closeAllPopups();
+        panelObserver.disconnect();
+      }
+    });
+  });
+  panelObserver.observe(panel, { attributes: true, attributeFilter: ['aria-hidden'] });
+
+  // --- Workflow steps ---
+  let qaFeedback = await showPopup('QA');
+  if (workflowCancelled || qaFeedback === '__CANCEL__') return;
+
+  if (qaFeedback === 0) {
+    return;
+  } else if (qaFeedback === 10) {
+    let noveltyFeedback = await showPopup('novelty');
+    if (workflowCancelled || noveltyFeedback === '__CANCEL__') return;
+    if (noveltyFeedback === 1) {
+      await showPopup('success');
+      return;
+    }
+  } else {
+    let reasoningFeedback = await showPopup('reasoning');
+    if (workflowCancelled || reasoningFeedback === '__CANCEL__') return;
+    if (reasoningFeedback === 0) {
+      await showPopup('datasource');
+      if (workflowCancelled) return;
+      await showPopup('datavalueNeed');
+      if (workflowCancelled) return;
+      await showPopup('datavalueUniqueness');
+      if (workflowCancelled) return;
+      return;
+    } else {
+      return;
+    }
+  }
+}
+
+
+
+async function showPopup(type) {
   // Remove any existing popup of this type
   let oldPopup = document.getElementById(`${type}-popup`);
   if (oldPopup) oldPopup.remove();
@@ -73,6 +195,17 @@ function showPopup(type) {
         document.body.appendChild(popup);
 
         let resolved = false; // To prevent double resolve
+
+        // ---- Move close button logic here, after popup is created ----
+        const closeBtn = popup.querySelector('.popup-close');
+        if (closeBtn) {
+          closeBtn.addEventListener('click', function() {
+            popup.remove();
+            resolved = true;
+            resolve('__CANCEL__'); // Use a special token to detect cancellation
+          });
+        }
+        // -------------------------------------------------------------
 
         if (type === "datasource") {
           popup.querySelector('#datasource-form').addEventListener('submit', function(e) {
@@ -102,43 +235,37 @@ function showPopup(type) {
             resolve(url);
           });
         }
-        else{
-              // Add click event listeners to all .{type}-btn buttons
-              popup.querySelectorAll(`.${type}-btn`).forEach(btn => {
-                btn.addEventListener('click', function(e) {
-                  e.preventDefault();
-                  if (resolved) return; // Prevent double execution
-                  popup.querySelectorAll(`.${type}-btn`).forEach(b => b.classList.remove('selected'));
-                  btn.classList.add('selected');
-                  let feedback = btn.getAttribute('data-score');
-                  // Try to cast to int if possible
-                  if (!isNaN(feedback)) feedback = parseInt(feedback, 10);
-                  updateResultUserTestingFields(type, feedback);
-                  popup.remove();
-                  resolved = true;
-                  resolve(feedback);
-                });
-              });
-          }
+        else {
+          // Add click event listeners to all .{type}-btn buttons
+          popup.querySelectorAll(`.${type}-btn`).forEach(btn => {
+            btn.addEventListener('click', function(e) {
+              e.preventDefault();
+              if (resolved) return; // Prevent double execution
+              popup.querySelectorAll(`.${type}-btn`).forEach(b => b.classList.remove('selected'));
+              btn.classList.add('selected');
+              let feedback = btn.getAttribute('data-score');
+              // Try to cast to int if possible
+              if (!isNaN(feedback)) feedback = parseInt(feedback, 10);
+              updateResultUserTestingFields(type, feedback);
+              popup.remove();
+              resolved = true;
+              resolve(feedback);
+            });
+          });
+        }
 
-        // Timeout to auto-close the popup if no answer
-        setTimeout(() => {
-          if (popup.parentNode && !resolved) {
-            popup.remove();
-            resolved = true;
-            resolve(null); // resolve with null if timeout
-          }
-        }, 15000);
+        // Timeout removed as requested
 
       });
     });
 }
 
 
+
 const observedPanels = new Set();
 
 function setupMutationObserver() {
-  // find all elements with accordionPanel in their class and observe aria-hidden change of status
+  // Find all elements with accordionPanel in their class and observe aria-hidden change of status
   let panels = document.querySelectorAll('[class*="accordionPanel"]');
 
   panels.forEach(panel => {
@@ -151,30 +278,8 @@ function setupMutationObserver() {
           let isNowVisible = panel.getAttribute('aria-hidden') === 'false';
           let wasHidden = mutation.oldValue === 'true';
           if (isNowVisible && wasHidden) {
-            // Start popup workflow
-            const qaFeedback = await showPopup('QA');
-            if (qaFeedback === 0) {
-              // Print and clear testing object
-              printAndClearTestingObject();
-            } else if (qaFeedback === 10) {
-              const noveltyFeedback = await showPopup('novelty');
-              if (noveltyFeedback === 1) {
-                await showPopup('success');
-                printAndClearTestingObject();
-              }
-            } else {
-              const reasoningFeedback = await showPopup('reasoning');
-              if (reasoningFeedback === 0) {
-                await showPopup('datasource');
-                printAndClearTestingObject();
-                await showPopup('datavalueNeed');
-                printAndClearTestingObject();
-                await showPopup('datavalueUniqueness');
-                printAndClearTestingObject();
-              } else {
-                printAndClearTestingObject();
-              }
-            }
+            // Start the feedback workflow when the panel is opened!
+            collectAllFeedback(panel);
           }
         }
       }
@@ -187,6 +292,7 @@ function setupMutationObserver() {
     });
   });
 }
+
 
 setupMutationObserver();
 
@@ -234,13 +340,8 @@ const tooltipObserver = new MutationObserver(mutations => {
           label = labelSpan ? labelSpan.innerText.trim() : container.innerText.trim();
 
           // ---- Extract category from tooltip ----
-          // Find the closest tooltip (adjust selector if needed)
-          // This assumes the tooltip is currently visible and belongs to this node
-          // You may need to refine the selector if multiple tooltips are present
           const tooltip = document.querySelector('.react-tooltip[role="tooltip"]');
           if (tooltip) {
-            // Find the <span> that contains the label and category
-            // e.g., <span><strong>Somatotropin</strong> (Small Molecule)</span>
             const spanWithCategory = tooltip.querySelector('span');
             if (spanWithCategory) {
               const text = spanWithCategory.textContent;
