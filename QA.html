@@ -64,13 +64,28 @@
       flex-wrap: wrap;
       gap: 2px;
     }
+    .popup-close {
+      position: absolute;
+      top: 8px;
+      right: 12px;
+      font-size: 24px;
+      font-weight: bold;
+      color: #888;
+      cursor: pointer;
+      z-index: 10;
+      transition: color 0.2s;
+    }
+    .popup-close:hover {
+      color: #e74c3c;
+    }
   </style>
 </head>
 <body>
   <div id="QA-popup">
+    <span class="popup-close" title="Close">&times;</span>
     <div style="text-align:center; margin-bottom: 8px; color: #888;">About the result you've just opened:</div>
     <div style="text-align:center; margin-bottom: 8px;">
-      <strong>How much sense did this panel make?</strong>
+      <strong>How much sense does this result make?</strong>
     </div>
     <div class="QA-scale-row">
       <span class="QA-scale-label">No sense at all</span>

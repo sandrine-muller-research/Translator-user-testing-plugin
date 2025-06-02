@@ -2,9 +2,13 @@ const nameContainers = document.querySelectorAll('span[class*="_nameContainer_"]
 
 const userTestingObj = {
       result:{
-        QAscore:"",
+        QA:"",
         novelty:"",
         success:"",
+        reasoning:"",
+        datasource:"",
+        datavalueNeed:"",
+        datavalueUniqueness:"",
         flags:[]
       },
       session:{
@@ -15,11 +19,17 @@ const userTestingObj = {
       }
 };
 
+function printAndClearTestingObject() {
+  console.log('************function called!********');
+  console.log('Testing object:', userTestingObj);
+
+}
+
 function updateResultUserTestingFields(field, value) {
   if ('result' in userTestingObj) { // Use quotes around 'result'
      if (field in userTestingObj.result) { // Use .result, not [result]
       if (field === "flags"){
-        userTestingObj.result[field].append(value);
+        userTestingObj.result[field].push(value);
       }else{
       userTestingObj.result[field] = value;
       }
@@ -27,6 +37,14 @@ function updateResultUserTestingFields(field, value) {
   }
 }
 
+function isValidURL(str) {
+  try {
+    new URL(str);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
 
 function showPopup(type) {
   // Remove any existing popup of this type
@@ -56,22 +74,52 @@ function showPopup(type) {
 
         let resolved = false; // To prevent double resolve
 
-        // Add click event listeners to all .{type}-btn buttons
-        popup.querySelectorAll(`.${type}-btn`).forEach(btn => {
-          btn.addEventListener('click', function(e) {
+        if (type === "datasource") {
+          popup.querySelector('#datasource-form').addEventListener('submit', function(e) {
             e.preventDefault();
-            if (resolved) return; // Prevent double execution
-            popup.querySelectorAll(`.${type}-btn`).forEach(b => b.classList.remove('selected'));
-            btn.classList.add('selected');
-            let feedback = btn.getAttribute('data-score');
-            // Try to cast to int if possible
-            if (!isNaN(feedback)) feedback = parseInt(feedback, 10);
-            updateResultUserTestingFields(type, feedback);
+            const url = popup.querySelector('#datasource-url').value.trim();
+            const errorDiv = popup.querySelector('#datasource-error');
+            if (!url) {
+              errorDiv.textContent = "Please enter a URL.";
+              updateResultUserTestingFields(type, null);
+              popup.remove();
+              resolved = true;
+              resolve(null);
+              return;
+            }
+            if (!isValidURL(url)) {
+              errorDiv.textContent = "Invalid URL. Please enter a valid URL (e.g., https://example.com).";
+              updateResultUserTestingFields(type, null);
+              popup.remove();
+              resolved = true;
+              resolve(null);
+              return;
+            }
+            errorDiv.textContent = "";
+            updateResultUserTestingFields(type, url);
             popup.remove();
             resolved = true;
-            resolve(feedback);
+            resolve(url);
           });
-        });
+        }
+        else{
+              // Add click event listeners to all .{type}-btn buttons
+              popup.querySelectorAll(`.${type}-btn`).forEach(btn => {
+                btn.addEventListener('click', function(e) {
+                  e.preventDefault();
+                  if (resolved) return; // Prevent double execution
+                  popup.querySelectorAll(`.${type}-btn`).forEach(b => b.classList.remove('selected'));
+                  btn.classList.add('selected');
+                  let feedback = btn.getAttribute('data-score');
+                  // Try to cast to int if possible
+                  if (!isNaN(feedback)) feedback = parseInt(feedback, 10);
+                  updateResultUserTestingFields(type, feedback);
+                  popup.remove();
+                  resolved = true;
+                  resolve(feedback);
+                });
+              });
+          }
 
         // Timeout to auto-close the popup if no answer
         setTimeout(() => {
@@ -87,33 +135,49 @@ function showPopup(type) {
 }
 
 
+const observedPanels = new Set();
+
 function setupMutationObserver() {
   // find all elements with accordionPanel in their class and observe aria-hidden change of status
   let panels = document.querySelectorAll('[class*="accordionPanel"]');
 
   panels.forEach(panel => {
-    let observer = new MutationObserver(function(mutations) {
-      mutations.forEach(mutation => {
+    if (observedPanels.has(panel)) return; // Prevent double-observing
+    observedPanels.add(panel);
+
+    let observer = new MutationObserver(async function(mutations) {
+      for (const mutation of mutations) {
         if (mutation.attributeName === 'aria-hidden') {
           let isNowVisible = panel.getAttribute('aria-hidden') === 'false';
           let wasHidden = mutation.oldValue === 'true';
           if (isNowVisible && wasHidden) {
-            showPopup('QA').then(feedback => {
-              if (feedback === 0) {
-                // showPopup1();
-              } else if (feedback === 10) {
-                showPopup('novelty').then(feedback => {
-                        if (feedback === 1) { // result novel
-                          showPopup('success');
-                        } 
-                      })
-              } else {
-                // showPopup3();
+            // Start popup workflow
+            const qaFeedback = await showPopup('QA');
+            if (qaFeedback === 0) {
+              // Print and clear testing object
+              printAndClearTestingObject();
+            } else if (qaFeedback === 10) {
+              const noveltyFeedback = await showPopup('novelty');
+              if (noveltyFeedback === 1) {
+                await showPopup('success');
+                printAndClearTestingObject();
               }
-            });
+            } else {
+              const reasoningFeedback = await showPopup('reasoning');
+              if (reasoningFeedback === 0) {
+                await showPopup('datasource');
+                printAndClearTestingObject();
+                await showPopup('datavalueNeed');
+                printAndClearTestingObject();
+                await showPopup('datavalueUniqueness');
+                printAndClearTestingObject();
+              } else {
+                printAndClearTestingObject();
+              }
+            }
           }
         }
-      });
+      }
     });
 
     observer.observe(panel, {
@@ -139,7 +203,7 @@ dynamicObserver.observe(document.body, {
   subtree: true
 });
 
-///////////////////////////////////////////////////// Nodes labels issues:
+///////////////////////////////////////////////////// labels issues:
 const flagTypes = [
   { type: "incorrect_label", label: "Incorrect Label", emoji: "🏷️" },
   { type: "wrong_biolink_category", label: "Wrong Biolink Category", emoji: "📕" },
@@ -160,22 +224,35 @@ const tooltipObserver = new MutationObserver(mutations => {
         if (!container) return;
 
         // Determine flag type: node or predicate
-        let flagField, entityId, label;
+        let flagField, entityId, label, category;
+
         if (container.className.includes("nameContainer")) {
           flagField = "nodeFlag";
           entityId = container.getAttribute('data-node-id');
           // Try to get the label text
           const labelSpan = container.querySelector('._text_1o93p_198');
           label = labelSpan ? labelSpan.innerText.trim() : container.innerText.trim();
+
+          // ---- Extract category from tooltip ----
+          // Find the closest tooltip (adjust selector if needed)
+          // This assumes the tooltip is currently visible and belongs to this node
+          // You may need to refine the selector if multiple tooltips are present
+          const tooltip = document.querySelector('.react-tooltip[role="tooltip"]');
+          if (tooltip) {
+            // Find the <span> that contains the label and category
+            // e.g., <span><strong>Somatotropin</strong> (Small Molecule)</span>
+            const spanWithCategory = tooltip.querySelector('span');
+            if (spanWithCategory) {
+              const text = spanWithCategory.textContent;
+              const match = text.match(/\(([^)]+)\)/);
+              category = match ? match[1] : null;
+            }
+          }
+          // --------------------------------------
         } else if (container.className.includes("predicateContainer")) {
           flagField = "predicateFlag";
-          // entityId = container.getAttribute('data-tooltip-id'); 
-          
           let rawId = container.getAttribute('data-tooltip-id');
           entityId = rawId.replace(/:r[\w\d]+:?$/, '');
-
-
-
           const predLabelSpan = container.querySelector('._predLabel_cegci_68');
           label = predLabelSpan ? predLabelSpan.innerText.trim() : container.innerText.trim();
         } else {
@@ -213,11 +290,16 @@ const tooltipObserver = new MutationObserver(mutations => {
             `.trim();
             if (confirm(summary)) {
               // Update feedback object
-              updateResultUserTestingFields(flagField, {
-                id: entityId,
-                label: label,
-                issue_type: flag.type
+              updateResultUserTestingFields("flags", {
+                flagField: flagField,
+                entityId: entityId,
+                label: label
               });
+              // updateResultUserTestingFields(flagField, {
+              //   "id": entityId,
+              //   "label": label,
+              //   "issue_type": flag.type
+              // });
               // Optionally, provide visual feedback
               flagBtn.style.background = "#e74c3c";
               flagBtn.style.color = "#fff";

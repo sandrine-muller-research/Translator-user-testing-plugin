@@ -20,7 +20,7 @@
   ],
   "web_accessible_resources": [
   {
-    "resources": ["QA.html","novelty.html","success.html"],
+    "resources": ["QA.html","novelty.html","success.html","reasoning.html","datasource.html","datavalueNeed.html","datavalueUniqueness.html"],
     "matches": ["<all_urls>"]
   }
 ]
