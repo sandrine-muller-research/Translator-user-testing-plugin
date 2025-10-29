@@ -1,6 +1,6 @@
 # User feedback chrome plugin
 This plugin can be easily installed within Chrome environment and will pop up questions as the user is going through results in Translator UI page. 
-The feedback is purely anonymous. 
+The feedback is purely anonymous and is a good opportunity for Translator UI users to get their voice heard!
 
 ## Install the plugin **FOR CHROME navigator**
 How to Install the Translator User Testing Plugin Chrome Extension? Below is a step-by-step procedure. 
