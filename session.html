@@ -1,0 +1,68 @@
+<!-- <!DOCTYPE html> -->
+<html>
+
+    <head>
+        <meta charset="UTF-8">
+        <style>
+
+            .session-btn {
+            padding: 2px 14px;
+            margin: 0 4px;
+            border: 1px solid #b0b0b0;
+            background-color: #f8f8f8;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 13px;
+            color: #524f81;
+            transition: background 0.2s, color 0.2s;
+            }
+            .session-btn.selected {
+            background-color: #524f81;
+            color: white;
+            border-color: #524f81;
+            }
+            .sessionNPS-scale-row {
+                display: flex;
+                justify-content: space-between;
+            }
+            .sessionNPS-scale-label {
+                display: flex;
+            }
+
+        </style>
+    </head>
+
+    <body>
+    <div id="session-popup">
+        <br />
+        <br />
+        <div style="border-bottom: 0.5px solid #888; height: 0; opacity: 1;" class="separator"></div>
+        <br />
+        <br />
+        <div style="text-align:center; margin-bottom: 8px;"><h4>Wait! Before you leave, we would like know:</h4></div>
+        <div style="text-align:center; margin-bottom: 8px;color: #524f81;">
+        <strong>Were you able to find results that answered the question successfully?</strong>
+        </div>
+        <div style="display: flex; justify-content: center; align-items: center;">
+        <button class="session-btn" data-score="1">No</button>
+        <button class="session-btn" data-score="0">Yes</button>
+        </div>    
+        <br />        
+        <div style="text-align:center; margin-bottom: 8px;color: #524f81;">
+        <strong></strong>How likely would you recommend this website to a colleague?</strong>
+        </div>
+        <div class="sessionNPS-scale-row">
+            <span class="sessionNPS-scale-label" style="color: #888;">Unlikely</span>
+            <div style="text-align:center; margin-bottom: 8px; color: #888;" class="sessionNPS-scale-btns">
+                <button class="session-btn" data-score="0">0</button>
+                <button class="session-btn" data-score="1">1</button>
+                <button class="session-btn" data-score="2">2</button>
+                <button class="session-btn" data-score="3">3</button>
+                <button class="session-btn" data-score="4">4</button>
+            </div>
+            <span class="sessionNPS-scale-label" style="color: #888;">Very likely</span>
+        </div>
+
+    </div>
+    </body>
+</html>
