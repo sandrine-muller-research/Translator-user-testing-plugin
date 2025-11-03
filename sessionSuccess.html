@@ -1,0 +1,46 @@
+<!-- <!DOCTYPE html> -->
+<html>
+
+    <head>
+        <meta charset="UTF-8">
+        <style>
+
+            .sessionSuccess-btn {
+            padding: 2px 14px;
+            margin: 0 4px;
+            border: 1px solid #b0b0b0;
+            background-color: #f8f8f8;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 13px;
+            color: #524f81;
+            transition: background 0.2s, color 0.2s;
+            }
+            .sessionSuccess-btn.selected {
+            background-color: #524f81;
+            color: white;
+            border-color: #524f81;
+            }
+
+        </style>
+    </head>
+
+    <body>
+    <div id="sessionSuccess-popup">
+        <br />
+        <br />
+        <div style="border-bottom: 0.5px solid #888; height: 0; opacity: 1;" class="separator"></div>
+        <br />
+        <br />
+        <div style="text-align:center; margin-bottom: 8px;color: #5E3067;"><h4>Wait! Before you leave, we would like know:</h4></div>
+        <div style="text-align:center; margin-bottom: 8px;color: #524f81;">
+        <strong>Were you able to find results that answered the question successfully?</strong>
+        </div>
+        <div style="display: flex; justify-content: center; align-items: center;">
+        <button class="sessionSuccess-btn" data-score="0">No</button>
+        <button class="sessionSuccess-btn" data-score="1">Yes</button>
+        </div>    
+
+    </div>
+    </body>
+</html>

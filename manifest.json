@@ -18,10 +18,8 @@
       "js": ["content.js"]
     }
   ],
-  "web_accessible_resources": [
-  {
-    "resources": ["QA.html","novelty.html","success.html","reasoning.html","datasource.html","datavalueNeed.html","datavalueUniqueness.html","session.html"],
-    "matches": ["<all_urls>"]
-  }
-]
+  "web_accessible_resources": [{
+    "resources": ["*.html"],
+    "matches": ["*://*/*"]
+  }]
 }

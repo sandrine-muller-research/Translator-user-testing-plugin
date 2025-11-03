@@ -1,12 +1,11 @@
-// const nameContainers = document.querySelectorAll('span[class*="_nameContainer_"]');
-// console.log('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
-// console.log(nameContainers)
-// const nameNavigateAway = document.querySelector('_modalContainer_1kx79_57');
 
+// Initialize global state
 let workflowCancelled = false;
 const PK = getPkFromUrl(window.location.href);
 let currentOpenPanel = null;
 let currentWorkflowPromise = null;
+let isObservingNavigateModal = false;
+let isHandlingNavigateWorkflow = false;
 
 
 const userTestingObjTemplate = {
@@ -26,7 +25,9 @@ const userTestingObjTemplate = {
         timestamp: Date.now(),
         query:{
           pk: PK
-        }
+        },
+      sessionSuccess: " ",
+      NPS: " "
       }
 };
 
@@ -48,7 +49,9 @@ function resetUserTestingObj() {
 
 
 function sendToGoogleForm(userTestingObj) {
-  const formUrl = 'https://docs.google.com/forms/u/0/d/e/1FAIpQLSeie6bjl9FReefkNyvvcQ53N-32lE7pF92D8BOm6RSdqijvow/formResponse';
+  console.log('Sending to Google Form:', userTestingObj);
+  const formUrl = 'https://docs.google.com/forms/u/0/d/e/1FAIpQLScFrEtToJT97jeUZ-9fUJil9kqwK7EzLGokj7E3nTJCx9WvGQ/formResponse';
+  // 'https://docs.google.com/forms/u/0/d/e/1FAIpQLSeie6bjl9FReefkNyvvcQ53N-32lE7pF92D8BOm6RSdqijvow/formResponse';
 
   // Replace these with your actual entry IDs!
   const formData = new URLSearchParams();
@@ -64,6 +67,8 @@ function sendToGoogleForm(userTestingObj) {
   formData.append('entry.1022165891', userTestingObj.session.timestamp);
   formData.append('entry.1257738886', userTestingObj.session.query.pk);
   formData.append('entry.52800901', JSON.stringify(userTestingObj.result.flags)); // flags as JSON
+  formData.append('entry.1257738886', userTestingObj.session.sessionSuccess);
+  formData.append('entry.1257738886', userTestingObj.session.NPS);
 
   fetch(formUrl, {
     method: 'POST',
@@ -140,17 +145,18 @@ function waitForPanelClose(panel) {
   });
 }
 
-async function collectAllFeedback(panel) {
+async function collectFeedbackPanel(panel) {
 
   resetUserTestingObj()
-
+  console.log('Collecting feedback for panel:', panel);
   // Start both feedback processes
   const object = extractNodeIdFromTableItem(panel)
   const predicate = extractPredicateIdFromTableItem(panel)
   updateResultUserTestingFields('object', object)
   updateResultUserTestingFields('predicate', predicate)
-  const workflowPromise = runWorkflow(panel); // Resolves when workflow is done
+  const workflowPromise = runPopupWorkflow(panel); // Resolves when workflow is done
   const flagPromise = waitForPanelClose(panel); // Resolves when panel is closed
+  // const sessionfeedbackPromise = 
 
   // Wait for both to finish
   await Promise.all([workflowPromise, flagPromise]);
@@ -161,12 +167,35 @@ async function collectAllFeedback(panel) {
   closePanel(panel); // Optionally, if not already closed
 }
 
+async function collectNavigateAwayPanel(panel) {
+  console.log('entered collectNavigateAwayPanel');
+  resetUserTestingObj();
+  
+  try {
+    const result = await runNavigateAwayWorkflow(panel);
+    
+    if (result && result !== 'cancelled' && result !== 'closed') {
+      // Update the testing object with the feedback
+      if (result.sessionSuccess !== undefined) {
+        updateResultUserTestingFields('sessionSuccess', result.sessionSuccess);
+      }
+      if (result.NPS !== undefined) {
+        updateResultUserTestingFields('NPS', result.NPS);
+      }
+    }
+  } catch (error) {
+    console.error('Error in navigate away workflow:', error);
+  } finally {
+    // Always clean up
+    printAndClearTestingObject();
+    closeAllPopups();
+  }
+}
 
-async function runWorkflow(panel) {
+
+
+async function runPopupWorkflow(panel) {
   let workflowCancelled = false;
-
-  // Global session feedback
-  injectSessionFeedback();
 
   // Promise that resolves when the panel is closed
   const panelClosedPromise = new Promise(resolve => {
@@ -187,9 +216,105 @@ async function runWorkflow(panel) {
   });
 
   // Helper to race workflow steps against panel close
+  async function injectPopup(type) {
+    // Remove any existing popup of this type
+    let oldPopup = document.getElementById(`${type}-popup`);
+    if (oldPopup) oldPopup.remove();
+
+    // Check for Chrome runtime first
+    if (!chrome?.runtime?.getURL) {
+      console.error('Chrome runtime not available');
+      return Promise.reject(new Error('Chrome runtime not available'));
+    }
+
+    return fetch(chrome.runtime.getURL(`${type}.html`))
+      .then(response => response.text())
+      .then(html => {
+        return new Promise((resolve) => {
+          let popup = document.createElement('div');
+          popup.id = `${type}-popup`;
+          popup.innerHTML = html;
+          popup.style.position = 'fixed';
+          popup.style.right = '0';
+          popup.style.bottom = '0';
+          popup.style.width = 'fit-content';
+          popup.style.background = 'white';
+          popup.style.padding = '20px';
+          popup.style.borderRadius = '8px';
+          popup.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.2)';
+          popup.style.fontSize = '14px';
+          popup.style.height = 'auto';
+          popup.style.margin = '0 40px 40px 0';
+
+          document.body.appendChild(popup);
+
+          let resolved = false; // To prevent double resolve
+
+          // ---- Move close button logic here, after popup is created ----
+          const closeBtn = popup.querySelector('.popup-close');
+          if (closeBtn) {
+            closeBtn.addEventListener('click', function() {
+              popup.remove();
+              resolved = true;
+              resolve('__CANCEL__'); // Use a special token to detect cancellation
+            });
+          }
+          // -------------------------------------------------------------
+
+          if (type === "datasource") {
+            popup.querySelector('#datasource-form').addEventListener('submit', function(e) {
+              e.preventDefault();
+              const url = popup.querySelector('#datasource-url').value.trim();
+              const errorDiv = popup.querySelector('#datasource-error');
+              if (!url) {
+                errorDiv.textContent = "Please enter a URL.";
+                updateResultUserTestingFields(type, null);
+                popup.remove();
+                resolved = true;
+                resolve(null);
+                return;
+              }
+              if (!isValidURL(url)) {
+                errorDiv.textContent = "Invalid URL. Please enter a valid URL (e.g., https://example.com).";
+                updateResultUserTestingFields(type, null);
+                popup.remove();
+                resolved = true;
+                resolve(null);
+                return;
+              }
+              errorDiv.textContent = "";
+              updateResultUserTestingFields(type, url);
+              popup.remove();
+              resolved = true;
+              resolve(url);
+            });
+          }
+          else {
+            // Add click event listeners to all .{type}-btn buttons
+            popup.querySelectorAll(`.${type}-btn`).forEach(btn => {
+              btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                if (resolved) return; // Prevent double execution
+                popup.querySelectorAll(`.${type}-btn`).forEach(b => b.classList.remove('selected'));
+                btn.classList.add('selected');
+                let feedback = btn.getAttribute('data-score');
+                // Try to cast to int if possible
+                if (!isNaN(feedback)) feedback = parseInt(feedback, 10);
+                updateResultUserTestingFields(type, feedback);
+                popup.remove();
+                resolved = true;
+                resolve(feedback);
+              });
+            });
+          }
+        });
+      });
+  }
+
+  // Helper to race workflow steps against panel close
   async function raceStep(popupName) {
     return Promise.race([
-      showPopup(popupName),
+      injectPopup(popupName),
       panelClosedPromise
     ]);
   }
@@ -224,280 +349,204 @@ async function runWorkflow(panel) {
   }
 }
 
-async function injectSessionFeedback() {
-  const nameNavigateAway = document.querySelector(`div[aria-labelledby="nav-confirmation-title"]`);
-  // const nameNavigateAway = document.querySelectorAll('span[class*="_content_1n09d_14"]');
-  // const nameNavigateAway = document.getElementById(`nav-confirmation-message`);
-  console.log('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
-  console.log(nameNavigateAway)
+async function runNavigateAwayWorkflow(navigateAwayPanel) {
+  console.log('entered runNavigateAwayWorkflow');
+  let workflowCancelled = false;
 
-  // // Show session success popup when navigating away
-  // if (!navMessage) return;
-
-  // // Load the external HTML and insert right after the <p>
-  // let popup = document.createElement('div');
-  // popup.id = 'session-popup';
-  // popup.innerHTML = html;
-
-  // nameNavigateAway.insertAdjacentElement('afterend', popup);
-  // const sessionPopupNode = await loadSessionSuccessHtml();
-  // if (sessionPopupNode) {
-  //   navMessage.insertAdjacentElement('afterend', sessionPopupNode);
-  // }
-
-  // let oldPopup = document.getElementById(`session-popup`);
-  // if (oldPopup) oldPopup.remove();
-
-  return fetch(chrome.runtime.getURL(`session.html`))
-    .then(response => response.text())
-    .then(html => {
-      return new Promise((resolve) => {
-        let popup = document.createElement('div');
-        popup.id = `session-popup`;
-        popup.innerHTML = html;
-        // popup.style.position = 'fixed';
-        // popup.style.right = '0';
-        // popup.style.bottom = '0';
-        // popup.style.width = 'fit-content';
-        // popup.style.background = 'white';
-        // popup.style.padding = '20px';
-        // popup.style.borderRadius = '8px';
-        // popup.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.2)';
-        // popup.style.fontSize = '14px';
-        // popup.style.height = 'auto';
-        // popup.style.margin = '0 40px 40px 0';
-
-        // nameNavigateAway.appendChild(popup);
-        // nameNavigateAway.parentNode.parentNode.insertBefore(popup, nameNavigateAway.nextSibling);
-        nameNavigateAway.parentNode.insertAdjacentElement('afterend', popup);
-        // nameNavigateAway.insertAdjacentElement('afterend', popup);
-
-        let resolved = false; // To prevent double resolve
-
-        // ---- Move close button logic here, after popup is created ----
-        const closeBtn = popup.querySelector('.popup-close');
-        if (closeBtn) {
-          closeBtn.addEventListener('click', function() {
-            popup.remove();
-            resolved = true;
-            resolve('__CANCEL__'); // Use a special token to detect cancellation
-          });
+  // Create a promise that resolves when the modal is closed
+  const modalClosePromise = new Promise(resolve => {
+    const observer = new MutationObserver(mutations => {
+      for (const mutation of mutations) {
+        if (mutation.type === 'attributes' && 
+            mutation.attributeName === 'class' && 
+            !navigateAwayPanel.className.includes('_true_1kx79_25')) {
+          observer.disconnect();
+          workflowCancelled = true;
+          resolve('closed');
+          break;
         }
-
-        // Add click event listeners to all .session-popup buttons
-        popup.querySelectorAll(`*[class$="-btn"]`).forEach(btn => {
-          btn.addEventListener('click', function(e) {
-            e.preventDefault();
-            if (resolved) return; // Prevent double execution
-            popup.querySelectorAll(`*[class$="-btn"]`).forEach(b => b.classList.remove('selected'));
-            btn.classList.add('selected');
-            let feedback = btn.getAttribute('data-score');
-            // Try to cast to int if possible
-            if (!isNaN(feedback)) feedback = parseInt(feedback, 10);
-            updateResultUserTestingFields(type, feedback);
-            popup.remove();
-            resolved = true;
-            resolve(feedback);
-          });
-        });
-
-        // Timeout removed as requested
-
-      });
+      }
     });
 
+    observer.observe(navigateAwayPanel, {
+      attributes: true,
+      attributeFilter: ['class']
+    });
+  });
+
+  try {
+    // Show both popups at the same time
+    console.log('Showing both popups');
+    const [sessionSuccessResult, NPSResult] = await Promise.all([
+      injectSessionFeedback('sessionSuccess'),
+      injectSessionFeedback('NPS')
+    ]);
+    
+    console.log('sessionSuccess result:', sessionSuccessResult);
+    console.log('NPS result:', NPSResult);
+    
+    if (workflowCancelled || 
+        sessionSuccessResult === 'closed' || 
+        sessionSuccessResult === '__CANCEL__' ||
+        NPSResult === 'closed' || 
+        NPSResult === '__CANCEL__') {
+      console.log('One of the popups was cancelled or closed');
+      return 'cancelled';
+    }
+
+    if (workflowCancelled || 
+        NPSResult === 'closed' || 
+        NPSResult === '__CANCEL__') {
+      console.log('NPS popup was cancelled or closed');
+      return 'cancelled';
+    }
+
+    // Return both results if we got here
+    return {
+      sessionSuccess: sessionSuccessResult,
+      NPS: NPSResult
+    };
+
+  } catch (error) {
+    console.error('Error in navigate away workflow:', error);
+    return 'cancelled';
+  } finally {
+    // Clean up
+    if (!workflowCancelled) {
+      closeAllPopups();
+    }
+  }
 }
 
-async function showPopup(type) {
-  // Remove any existing popup of this type
-  let oldPopup = document.getElementById(`${type}-popup`);
-  if (oldPopup) oldPopup.remove();
+async function injectSessionFeedback(type) {
+  return new Promise((resolve) => {
+    try {
+      const navigateAwayModal = document.querySelector('[data-testid="navconf-modal"]');
+      console.log('navigateAwayModal:', navigateAwayModal);
+      if (!navigateAwayModal) {
+        console.error('Cannot find the nav-confirmation modal node');
+        return resolve('__CANCEL__');
+      }
+      
+      // Find the content container within the modal
+      const modalContent = navigateAwayModal.querySelector('[aria-describedby="nav-confirmation-message"]') || navigateAwayModal;
 
-  return fetch(chrome.runtime.getURL(`${type}.html`))
-    .then(response => response.text())
-    .then(html => {
-      return new Promise((resolve) => {
-        let popup = document.createElement('div');
-        popup.id = `${type}-popup`;
-        popup.innerHTML = html;
-        popup.style.position = 'fixed';
-        popup.style.right = '0';
-        popup.style.bottom = '0';
-        popup.style.width = 'fit-content';
-        popup.style.background = 'white';
-        popup.style.padding = '20px';
-        popup.style.borderRadius = '8px';
-        popup.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.2)';
-        popup.style.fontSize = '14px';
-        popup.style.height = 'auto';
-        popup.style.margin = '0 40px 40px 0';
+      if (!chrome?.runtime?.getURL) {
+        throw new Error('Chrome runtime not available');
+      }
 
-        document.body.appendChild(popup);
+      const url = chrome.runtime.getURL(`${type}.html`);
+      console.log('Loading HTML from:', url);
+      
+      fetch(url)
+        .then(response => {
+          console.log(`${type} fetch response:`, response.status, response.statusText);
+          if (!response.ok) {
+            throw new Error(`Failed to load ${type}.html: ${response.status} ${response.statusText}`);
+          }
+          console.log(`${type} response is OK, getting text...`);
+          return response.text();
+        })
+        .catch(error => {
+          console.error(`${type} fetch failed:`, error);
+          throw error;
+        })
+        .then(html => {
+          console.log(`${type} HTML loaded, length:`, html ? html.length : 'undefined');
+          if (!html || !html.trim()) {
+            throw new Error(`Empty content in ${type}.html`);
+          }
+          console.log(`${type} HTML content preview:`, html.substring(0, 100));
 
-        let resolved = false; // To prevent double resolve
+          let popup = document.createElement('div');
+          popup.id = `${type}-popup`;
+          popup.innerHTML = html;
+          
+          // First remove any existing popup of the same type
+          let existingPopup = navigateAwayModal.querySelector(`#${type}-popup`);
+          if (existingPopup) {
+            existingPopup.remove();
+          }
 
-        // ---- Move close button logic here, after popup is created ----
-        const closeBtn = popup.querySelector('.popup-close');
-        if (closeBtn) {
-          closeBtn.addEventListener('click', function() {
-            popup.remove();
-            resolved = true;
-            resolve('__CANCEL__'); // Use a special token to detect cancellation
-          });
-        }
-        // -------------------------------------------------------------
+          // Insert popups within the modal content in a container
+          let popupContainer = modalContent.querySelector('.session-popups-container');
+          if (!popupContainer) {
+            popupContainer = document.createElement('div');
+            popupContainer.className = 'session-popups-container';
+            popupContainer.style.display = 'flex';
+            popupContainer.style.flexDirection = 'column';
+            popupContainer.style.gap = '20px';
+            modalContent.appendChild(popupContainer);
+          }
 
-        if (type === "datasource") {
-          popup.querySelector('#datasource-form').addEventListener('submit', function(e) {
-            e.preventDefault();
-            const url = popup.querySelector('#datasource-url').value.trim();
-            const errorDiv = popup.querySelector('#datasource-error');
-            if (!url) {
-              errorDiv.textContent = "Please enter a URL.";
-              updateResultUserTestingFields(type, null);
-              popup.remove();
-              resolved = true;
-              resolve(null);
-              return;
-            }
-            if (!isValidURL(url)) {
-              errorDiv.textContent = "Invalid URL. Please enter a valid URL (e.g., https://example.com).";
-              updateResultUserTestingFields(type, null);
-              popup.remove();
-              resolved = true;
-              resolve(null);
-              return;
-            }
-            errorDiv.textContent = "";
-            updateResultUserTestingFields(type, url);
-            popup.remove();
-            resolved = true;
-            resolve(url);
-          });
-        }
-        else {
-          // Add click event listeners to all .{type}-btn buttons
-          popup.querySelectorAll(`.${type}-btn`).forEach(btn => {
+          // Add popup to the container
+          if (type === 'NPS') {
+            // NPS goes after sessionSuccess
+            popupContainer.appendChild(popup);
+          } else {
+            // sessionSuccess goes first
+            popupContainer.insertBefore(popup, popupContainer.firstChild);
+          }
+
+          // Add the popup to the page
+          navigateAwayModal.children[0].children[0].children[0].appendChild(popup);
+
+          let resolved = false;
+
+          // Set up button listeners
+          popup.querySelectorAll(`button[class$="-btn"]`).forEach(btn => {
             btn.addEventListener('click', function(e) {
               e.preventDefault();
-              if (resolved) return; // Prevent double execution
-              popup.querySelectorAll(`.${type}-btn`).forEach(b => b.classList.remove('selected'));
+              if (resolved) return;
+              
+              const allButtons = popup.querySelectorAll('button[class$="-btn"]');
+              allButtons.forEach(b => b.classList.remove('selected'));
               btn.classList.add('selected');
+              
               let feedback = btn.getAttribute('data-score');
-              // Try to cast to int if possible
-              if (!isNaN(feedback)) feedback = parseInt(feedback, 10);
+              if (!isNaN(feedback)) {
+                feedback = parseInt(feedback, 10);
+              }
+              
               updateResultUserTestingFields(type, feedback);
               popup.remove();
               resolved = true;
               resolve(feedback);
             });
           });
-        }
 
-        // Timeout removed as requested
+          // Set up close button listener
+          const closeBtn = popup.querySelector('.popup-close');
+          if (closeBtn) {
+            closeBtn.addEventListener('click', function() {
+              popup.remove();
+              resolved = true;
+              resolve('__CANCEL__');
+            });
+          }
+        })
+        .catch(err => {
+          console.error('Failed to inject popup:', err);
+          resolve('__CANCEL__');
+        });
 
-      });
-    });
+    } catch (err) {
+      console.error('Failed to inject popup:', err);
+      resolve('__CANCEL__');
+    }
+  });
 }
 
-// async function showPopup(type) {
-//   // Remove any existing popup of this type
-//   let oldPopup = document.getElementById(`${type}-popup`);
-//   if (oldPopup) oldPopup.remove();
-  
-//   return fetch(chrome.runtime.getURL(`${type}.html`))
-//     .then(response => response.text())
-//     .then(html => {
-//       return new Promise((resolve, reject) => { // Use reject for errors
-//         let popup = document.createElement('div');
-//         popup.id = `${type}-popup`;
-//         popup.innerHTML = html;
-//         popup.style.position = 'fixed';
-//         popup.style.right = '0';
-//         popup.style.bottom = '0';
-//         popup.style.width = 'fit-content';
-//         popup.style.background = 'white';
-//         popup.style.padding = '20px';
-//         popup.style.borderRadius = '8px';
-//         popup.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.2)';
-//         popup.style.fontSize = '14px';
-//         popup.style.height = 'auto';
-//         popup.style.margin = '0 40px 40px 0';
-
-//         let resolved = false; // To prevent double resolve
-//         // ---- Move close button logic here, after popup is created ----
-//         const closeBtn = popup.querySelector('.popup-close');
-//         if (closeBtn) {
-//           closeBtn.addEventListener('click', function() {
-//             popup.remove();
-//             resolved = true;
-//             resolve('__CANCEL__'); // Use a special token to detect cancellation
-//           });
-//         }
-//         // -------------------------------------------------------------
-        
-//         if (type === "sessionSuccess") { // Append to nameNavigateAway[0]
-//           const buttonsContainer = nameNavigateAway[0].querySelector('.buttonsContainer_1n09d_27');
-//           if (buttonsContainer !== null) {
-//             buttonsContainer.appendChild(popup);
-//           } else {
-//             reject('Error: Could not append popup to modal window.');
-//           }
-//         } else { // Append to document.body
-//           document.body.appendChild(popup);
-
-//           if (type === "datasource") {
-//             popup.querySelector('#datasource-form').addEventListener('submit', function(e) {
-//               e.preventDefault();
-//               const url = popup.querySelector('#datasource-url').value.trim();
-//               const errorDiv = popup.querySelector('#datasource-error');
-//               if (!url) {
-//                 errorDiv.textContent = "Please enter a URL.";
-//                 updateResultUserTestingFields(type, null);
-//                 popup.remove();
-//                 resolved = true;
-//                 resolve(null);
-//                 return;
-//               }
-//               if (!isValidURL(url)) {
-//                 errorDiv.textContent = "Invalid URL. Please enter a valid URL (e.g., https://example.com).";
-//                 updateResultUserTestingFields(type, null);
-//                 popup.remove();
-//                 resolved = true;
-//                 resolve(null);
-//                 return;
-//               }
-//               errorDiv.textContent = "";
-//               updateResultUserTestingFields(type, url);
-//               popup.remove();
-//               resolved = true;
-//               resolve(url);
-//             });
-//           } else { // Add click event listeners to all .{type}-btn buttons
-//             popup.querySelectorAll(`.${type}-btn`).forEach(btn => {
-//               btn.addEventListener('click', function(e) {
-//                 e.preventDefault();
-//                 if (resolved) return; // Prevent double execution
-//                 popup.querySelectorAll(`.${type}-btn`).forEach(b => b.classList.remove('selected'));
-//                 btn.classList.add('selected');
-//                 let feedback = btn.getAttribute('data-score');
-//                 // Try to cast to int if possible
-//                 if (!isNaN(feedback)) feedback = parseInt(feedback, 10);
-//                 updateResultUserTestingFields(type, feedback);
-//                 popup.remove();
-//                 resolved = true;
-//                 resolve(feedback);
-//               });
-//             });
-//           }
-//         }
-//       })
-//     });
-// }
+const flagTypes = [
+  { type: "incorrect_label", label: "Incorrect Label", emoji: "🏷️" },
+  { type: "wrong_biolink_category", label: "Wrong Biolink Category", emoji: "📕" },
+  { type: "wrong_link", label: "Wrong Link", emoji: "🔗" }
+];
 
 const observedPanels = new Set();
 
 function setupMutationObserver() {
+  // Observe accordion panels for open/close
   const panels = document.querySelectorAll('[class*="accordionPanel"]');
 
   panels.forEach(panel => {
@@ -525,20 +574,6 @@ function setupMutationObserver() {
                 }
               }
 
-              // Extract and save data from previous panel
-              // const tableItem = currentOpenPanel.closest('[class*="tableItem"]');
-              // if (tableItem) {
-              //   const nameContainer = tableItem.querySelector('[class*="nameContainer"]');
-              //   const predicateContainer = tableItem.querySelector('[class*="predicateContainer"]');
-                
-              //   const object = nameContainer?.getAttribute('data-node-id') || null;
-              //   const predicate = predicateContainer?.getAttribute('data-tooltip-id')?.replace(/:r[\w\d]+:?$/, '') || null;
-
-              //   console.log('Saving previous panel data:', { object, predicate });
-              //   updateResultUserTestingFields("object", object);
-              //   updateResultUserTestingFields("predicate", predicate);
-              // }
-
               // Cleanup previous panel
               printAndClearTestingObject();
               closeAllPopups();
@@ -547,7 +582,7 @@ function setupMutationObserver() {
 
             // Start new workflow
             currentOpenPanel = panel;
-            currentWorkflowPromise = collectAllFeedback(panel)
+            currentWorkflowPromise = collectFeedbackPanel(panel)
               .catch(e => console.error('Workflow error:', e))
               .finally(() => {
                 currentOpenPanel = null;
@@ -564,16 +599,19 @@ function setupMutationObserver() {
       attributeFilter: ['aria-hidden']
     });
   });
+
 }
 
 
 
-setupMutationObserver();
+// setupMutationObserver();
+navigateAwayModalObserver();
 
 let dynamicObserver = new MutationObserver(function(mutations) {
   mutations.forEach(mutation => {
     if (mutation.type === 'childList') {
       setupMutationObserver();
+      navigateAwayModalObserver();
     }
   });
 });
@@ -583,12 +621,7 @@ dynamicObserver.observe(document.body, {
   subtree: true
 });
 
-///////////////////////////////////////////////////// labels feedback:
-const flagTypes = [
-  { type: "incorrect_label", label: "Incorrect Label", emoji: "🏷️" },
-  { type: "wrong_biolink_category", label: "Wrong Biolink Category", emoji: "📕" },
-  { type: "wrong_link", label: "Wrong Link", emoji: "🔗" }
-];
+// Functions for extracting IDs from table items
 
 function extractNodeIdFromTableItem(tableItem) {
   if (!tableItem) return null;
@@ -704,3 +737,84 @@ const tooltipObserver = new MutationObserver(mutations => {
 tooltipObserver.observe(document.body, { childList: true, subtree: true });
 
 
+/////////////////////////////////////////////////////// session feedback:
+// function navigateAwayModalObserver() {
+//   // Select the modal element by its data-testid
+//   const navigateAwayModal = document.querySelector('[data-testid="navconf-modal"]');
+//   if (!navigateAwayModal) return;
+
+//   // Callback for MutationObserver
+//   const observerCallback = (mutationsList) => {
+//     for (const mutation of mutationsList) {
+//       if (
+//         mutation.type === 'attributes' &&
+//         mutation.attributeName === 'class'
+//       ) {
+//         const classList = navigateAwayModal.className;
+//         // Check if the class includes '_true_1kx79_25'
+//         if (classList.includes('_true_1kx79_25')) {
+//           // Run your workflow
+//           window.currentWorkflowPromise = collectNavigateAwayPanel(navigateAwayModal);
+//         }
+//       }
+//     }
+//   };
+
+//   // Create observer
+//   const observer = new MutationObserver(observerCallback);
+
+//   // Start observing class attribute changes
+//   observer.observe(navigateAwayModal, { attributes: true, attributeFilter: ['class'] });
+
+//   // Optionally, return the observer for later disconnecting/removal
+//   return observer;
+// }
+
+
+// Set up observer for the navigate away modal
+function navigateAwayModalObserver() {
+  if (isObservingNavigateModal) {
+    return; // Prevent multiple observers
+  }
+
+  function handleModalVisibility(modal) {
+    if (modal && 
+        modal.className.includes('_true_1kx79_25') && 
+        !isHandlingNavigateWorkflow) {
+      isHandlingNavigateWorkflow = true;
+      currentWorkflowPromise = collectNavigateAwayPanel(modal)
+        .finally(() => {
+          isHandlingNavigateWorkflow = false;
+        });
+    }
+  }
+
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      if (mutation.type === 'attributes' && 
+          mutation.attributeName === 'class' &&
+          mutation.target.matches('[data-testid="navconf-modal"]')) {
+        handleModalVisibility(mutation.target);
+      }
+    });
+  });
+
+  // Start observing the document for the modal
+  function startObserving() {
+    const modal = document.querySelector('[data-testid="navconf-modal"]');
+    if (modal) {
+      isObservingNavigateModal = true;
+      observer.observe(modal, {
+        attributes: true,
+        attributeFilter: ['class']
+      });
+      // Check initial state
+      handleModalVisibility(modal);
+    } else {
+      // If modal is not found, retry after a short delay
+      setTimeout(startObserving, 500);
+    }
+  }
+
+  startObserving();
+}
