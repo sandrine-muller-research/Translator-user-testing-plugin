@@ -51,8 +51,7 @@ function resetUserTestingObj() {
 function sendToGoogleForm(userTestingObj) {
   console.log('Sending to Google Form:', userTestingObj);
   const formUrl = 'https://docs.google.com/forms/u/0/d/e/1FAIpQLScFrEtToJT97jeUZ-9fUJil9kqwK7EzLGokj7E3nTJCx9WvGQ/formResponse';
-  // 'https://docs.google.com/forms/u/0/d/e/1FAIpQLSeie6bjl9FReefkNyvvcQ53N-32lE7pF92D8BOm6RSdqijvow/formResponse';
-
+  
   // Replace these with your actual entry IDs!
   const formData = new URLSearchParams();
   formData.append('entry.1142791448', userTestingObj.result.object);
@@ -67,8 +66,8 @@ function sendToGoogleForm(userTestingObj) {
   formData.append('entry.1022165891', userTestingObj.session.timestamp);
   formData.append('entry.1257738886', userTestingObj.session.query.pk);
   formData.append('entry.52800901', JSON.stringify(userTestingObj.result.flags)); // flags as JSON
-  formData.append('entry.1257738886', userTestingObj.session.sessionSuccess);
-  formData.append('entry.1257738886', userTestingObj.session.NPS);
+  formData.append('entry.875801026', userTestingObj.session.sessionSuccess);
+  formData.append('entry.764010696', userTestingObj.session.NPS);
 
   fetch(formUrl, {
     method: 'POST',
@@ -146,25 +145,33 @@ function waitForPanelClose(panel) {
 }
 
 async function collectFeedbackPanel(panel) {
-
-  resetUserTestingObj()
-  console.log('Collecting feedback for panel:', panel);
-  // Start both feedback processes
-  const object = extractNodeIdFromTableItem(panel)
-  const predicate = extractPredicateIdFromTableItem(panel)
-  updateResultUserTestingFields('object', object)
-  updateResultUserTestingFields('predicate', predicate)
-  const workflowPromise = runPopupWorkflow(panel); // Resolves when workflow is done
-  const flagPromise = waitForPanelClose(panel); // Resolves when panel is closed
-  // const sessionfeedbackPromise = 
-
-  // Wait for both to finish
-  await Promise.all([workflowPromise, flagPromise]);
-
-  // Now print and clear, regardless of whether any flags were recorded
-  printAndClearTestingObject();
+  // Clean up any existing workflow first
   closeAllPopups();
-  closePanel(panel); // Optionally, if not already closed
+  printAndClearTestingObject();
+
+  resetUserTestingObj();
+  console.log('Collecting feedback for panel:', panel);
+  
+  // Start feedback processes
+  const object = extractNodeIdFromTableItem(panel);
+  const predicate = extractPredicateIdFromTableItem(panel);
+  updateResultUserTestingFields('object', object);
+  updateResultUserTestingFields('predicate', predicate);
+  
+  try {
+    const workflowPromise = runPopupWorkflow(panel); // Resolves when workflow is done
+    const flagPromise = waitForPanelClose(panel); // Resolves when panel is closed
+    
+    // Wait for both to finish
+    await Promise.all([workflowPromise, flagPromise]);
+  } catch (e) {
+    console.error('Error in feedback workflow:', e);
+  } finally {
+    // Always clean up when done, whether successful or not
+    printAndClearTestingObject();
+    closeAllPopups();
+    closePanel(panel);
+  }
 }
 
 async function collectNavigateAwayPanel(panel) {
@@ -195,7 +202,7 @@ async function collectNavigateAwayPanel(panel) {
 
 
 async function runPopupWorkflow(panel) {
-  let workflowCancelled = false;
+  workflowCancelled = false;  // Use the global workflowCancelled
 
   // Promise that resolves when the panel is closed
   const panelClosedPromise = new Promise(resolve => {
@@ -562,22 +569,17 @@ function setupMutationObserver() {
           if (isNowVisible && wasHidden) {
             // Handle previous panel if different from new one
             if (currentOpenPanel && currentOpenPanel !== panel) {
-              // Visual close and await completion
+              // Visual close
               currentOpenPanel.setAttribute('aria-hidden', 'true');
               
-              // Wait for existing workflow to finish
+              // Force cleanup of previous workflow
               if (currentWorkflowPromise) {
-                try {
-                  await currentWorkflowPromise;
-                } catch (e) {
-                  console.error('Previous workflow error:', e);
-                }
+                workflowCancelled = true;  // Signal cancellation to any running workflow
+                closeAllPopups();
+                printAndClearTestingObject();
+                closePanel(currentOpenPanel);
+                currentWorkflowPromise = null;
               }
-
-              // Cleanup previous panel
-              printAndClearTestingObject();
-              closeAllPopups();
-              closePanel(currentOpenPanel);
             }
 
             // Start new workflow
