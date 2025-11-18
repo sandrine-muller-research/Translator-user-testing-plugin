@@ -7,28 +7,29 @@ let currentWorkflowPromise = null;
 let isObservingNavigateModal = false;
 let isHandlingNavigateWorkflow = false;
 
-
-const userTestingObjTemplate = {
-      result:{
-        object:" ",
-        predicate:" ",
-        QA:" ",
-        novelty:" ",
-        success:" ",
-        reasoning:" ",
-        datasource:" ",
-        datavalueNeed:" ",
-        datavalueUniqueness:" ",
-        flags:[]
-      },
-      session:{
-        timestamp: Date.now(),
-        query:{
-          pk: PK
-        },
-      sessionSuccess: " ",
-      NPS: " "
-      }
+// Initialize global testing object
+let userTestingObj = {
+  result:{
+    object:" ",
+    predicate:" ",
+    ARA:" ",
+    QA:" ",
+    novelty:" ",
+    success:" ",
+    reasoning:" ",
+    datasource:" ",
+    datavalueNeed:" ",
+    datavalueUniqueness:" ",
+    flags:[]
+  },
+  session:{
+    timestamp: Date.now(),
+    query:{
+      pk: PK
+    },
+    sessionSuccess: " ",
+    NPS: " "
+  }
 };
 
 function getPkFromUrl(url) {
@@ -42,32 +43,62 @@ function getPkFromUrl(url) {
 }
 
 function resetUserTestingObj() {
-  userTestingObj = JSON.parse(JSON.stringify(userTestingObjTemplate));
-  userTestingObj.session.timestamp = Date.now();
-  userTestingObj.session.pk = PK;
+  userTestingObj = {
+    result:{
+      object:" ",
+      predicate:" ",
+      QA:" ",
+      novelty:" ",
+      success:" ",
+      reasoning:" ",
+      datasource:" ",
+      datavalueNeed:" ",
+      datavalueUniqueness:" ",
+      flags:[]
+    },
+    session:{
+      timestamp: Date.now(),
+      query:{
+        pk: PK
+      },
+      sessionSuccess: " ",
+      NPS: " "
+    }
+  };
 }
 
 
-function sendToGoogleForm(userTestingObj) {
-  console.log('Sending to Google Form:', userTestingObj);
+function sendToGoogleForm(obj) {
+  // Safety check - if obj is undefined, use the global userTestingObj
+  const testingObj = obj || userTestingObj;
+  
+  // If still no valid object, initialize a new one
+  if (!testingObj || !testingObj.result || !testingObj.session) {
+    console.error('Invalid testing object, initializing new one');
+    resetUserTestingObj();
+    return;
+  }
+
+  console.log('Sending to Google Form:', testingObj);
   const formUrl = 'https://docs.google.com/forms/u/0/d/e/1FAIpQLScFrEtToJT97jeUZ-9fUJil9kqwK7EzLGokj7E3nTJCx9WvGQ/formResponse';
   
   // Replace these with your actual entry IDs!
   const formData = new URLSearchParams();
-  formData.append('entry.1142791448', userTestingObj.result.object);
-  formData.append('entry.455615436', userTestingObj.result.predicate);
-  formData.append('entry.1703541576', userTestingObj.result.QA);
-  formData.append('entry.652081313', userTestingObj.result.novelty);
-  formData.append('entry.1262337293', userTestingObj.result.success);
-  formData.append('entry.1304457557', userTestingObj.result.reasoning);
-  formData.append('entry.17482856', userTestingObj.result.datasource);
-  formData.append('entry.1912985814', userTestingObj.result.datavalueNeed);
-  formData.append('entry.1319177885', userTestingObj.result.datavalueUniqueness);
-  formData.append('entry.1022165891', userTestingObj.session.timestamp);
-  formData.append('entry.1257738886', userTestingObj.session.query.pk);
-  formData.append('entry.52800901', JSON.stringify(userTestingObj.result.flags)); // flags as JSON
-  formData.append('entry.875801026', userTestingObj.session.sessionSuccess);
-  formData.append('entry.764010696', userTestingObj.session.NPS);
+  formData.append('entry.2101973845', testingObj.session.ARA || " ");
+  formData.append('entry.1142791448', testingObj.result.object || " ");
+  formData.append('entry.455615436', testingObj.result.predicate || " ");
+  formData.append('entry.1703541576', testingObj.result.QA || " ");
+  formData.append('entry.652081313', testingObj.result.novelty || " ");
+  formData.append('entry.1262337293', testingObj.result.success || " ");
+  formData.append('entry.1304457557', testingObj.result.reasoning || " ");
+  formData.append('entry.17482856', testingObj.result.datasource || " ");
+  formData.append('entry.1912985814', testingObj.result.datavalueNeed || " ");
+  formData.append('entry.1319177885', testingObj.result.datavalueUniqueness || " ");
+  formData.append('entry.1022165891', testingObj.session.timestamp || Date.now());
+  formData.append('entry.1257738886', testingObj.session.query.pk || PK);
+  formData.append('entry.52800901', JSON.stringify(testingObj.result.flags || [])); // flags as JSON
+  formData.append('entry.875801026', testingObj.session.sessionSuccess || " ");
+  formData.append('entry.764010696', testingObj.session.NPS || " ");
 
   fetch(formUrl, {
     method: 'POST',
@@ -77,6 +108,9 @@ function sendToGoogleForm(userTestingObj) {
     },
     body: formData
   });
+  
+  // Reset the testing object after sending
+  resetUserTestingObj();
 
 }
 
@@ -116,12 +150,56 @@ function isValidURL(str) {
   }
 }
 
+function setAriaHiddenRecursively(element) {
+  if (!element) return;
+  element.setAttribute('aria-hidden', 'true');
+  Array.from(element.children).forEach(child => setAriaHiddenRecursively(child));
+}
+
+
 function closePanel(panel) {
-  panel.setAttribute('aria-hidden', 'true');
+  console.log('Closing panel:', panel);
+  if (!panel) {
+    console.warn('Attempted to close null or undefined panel');
+    return;
+  }
+  console.log('closing Panel');
+  setAriaHiddenRecursively(panel);
+  console.log('Panel aria-hidden set to true:', panel);
+
+  // Replace '_open_' with '_closed_'
+  const elements = panel.querySelectorAll('[class*="_open_"]');
+  console.log('Found open buttons:', elements);
+  elements.forEach(element => {
+    let newclassName = element.className.replace(/_open_/g, '_closed_');  
+    if (newclassName !== element.className) {
+      element.className = newClassName;
+    }
+  });
+
+  // Replace '-auto _' with '-zero _'
+  const autoelements = panel.querySelectorAll('[class*="-auto _"]');
+  autoelements.forEach(element => {
+    let newclassName = element.className.replace(/-auto _/g, '-zero _');
+    console.log('Updating class from', element.className, 'to', newclassName);
+    if (newclassName !== element.className) {
+      element.className = newClassName;
+    }
+  });
+
+  console.log('Classes updated:', panel);
+
+  // // Force close by simulating click on the close button if available
+  // const closeButton = panel.querySelector('button[aria-label="Close"]');
+  // if (closeButton) {
+  //   console.log('Found close button, simulating click');
+  //   closeButton.click();
+  // }
 }
 
 
 function waitForPanelClose(panel) {
+  console.log('waitForPanelClose started for panel:', panel); 
   return new Promise(resolve => {
     if (panel.getAttribute('aria-hidden') === 'true') {
       console.log("Panel already closed at start");
@@ -145,32 +223,64 @@ function waitForPanelClose(panel) {
 }
 
 async function collectFeedbackPanel(panel) {
+  console.log('collectFeedbackPanel started');
+  
   // Clean up any existing workflow first
+  if (currentWorkflowPromise) {
+    console.log('Cancelling existing workflow');
+    workflowCancelled = true;
+    await currentWorkflowPromise;
+    // Send data for cancelled workflow
+    printAndClearTestingObject();
+  }
+  
+  // Always clean up any existing popups
   closeAllPopups();
-  printAndClearTestingObject();
-
+  
+  // Clean up previous panel if it exists
+  if (currentOpenPanel && currentOpenPanel !== panel) {
+    console.log('Cleaning up previous panel:', currentOpenPanel);
+    try {
+      closePanel(currentOpenPanel);
+      // Wait a moment to ensure the panel starts closing
+      await new Promise(resolve => setTimeout(resolve, 100));
+      if (currentOpenPanel.getAttribute('aria-hidden') !== 'true') {
+        console.warn('Panel did not close properly, forcing close');
+        currentOpenPanel.setAttribute('aria-hidden', 'true');
+      }
+    } catch (e) {
+      console.error('Error closing previous panel:', e);
+    }
+    currentOpenPanel = null;
+  }
+  
+  // Start fresh with new testing object
   resetUserTestingObj();
-  console.log('Collecting feedback for panel:', panel);
+  console.log('Testing object reset');
   
   // Start feedback processes
   const object = extractNodeIdFromTableItem(panel);
   const predicate = extractPredicateIdFromTableItem(panel);
+  const ara = extractARAFromTableItem(panel);
+  console.log('Extracted IDs:', { object, predicate });
   updateResultUserTestingFields('object', object);
   updateResultUserTestingFields('predicate', predicate);
+  updateResultUserTestingFields('ARA', ara);  
   
   try {
-    const workflowPromise = runPopupWorkflow(panel); // Resolves when workflow is done
-    const flagPromise = waitForPanelClose(panel); // Resolves when panel is closed
+    console.log('Starting workflow for panel');
+    const result = await runPopupWorkflow(panel);
+    console.log('Workflow completed with result:', result);
     
-    // Wait for both to finish
-    await Promise.all([workflowPromise, flagPromise]);
+    // if (result !== 'cancelled') {
+    printAndClearTestingObject();
+    await waitForPanelClose(panel);
+    // }
   } catch (e) {
     console.error('Error in feedback workflow:', e);
   } finally {
-    // Always clean up when done, whether successful or not
-    printAndClearTestingObject();
+    // Always ensure popups are cleaned up
     closeAllPopups();
-    closePanel(panel);
   }
 }
 
@@ -202,7 +312,8 @@ async function collectNavigateAwayPanel(panel) {
 
 
 async function runPopupWorkflow(panel) {
-  workflowCancelled = false;  // Use the global workflowCancelled
+  console.log('Starting runPopupWorkflow');
+  workflowCancelled = false;
 
   // Promise that resolves when the panel is closed
   const panelClosedPromise = new Promise(resolve => {
@@ -212,17 +323,53 @@ async function runPopupWorkflow(panel) {
           mutation.attributeName === 'aria-hidden' &&
           panel.getAttribute('aria-hidden') === 'true'
         ) {
+          console.log('Panel closed during workflow');
           workflowCancelled = true;
           closeAllPopups();
           panelObserver.disconnect();
-          resolve('cancelled'); // <-- Resolves the promise
+          resolve('cancelled');
         }
       });
     });
     panelObserver.observe(panel, { attributes: true, attributeFilter: ['aria-hidden'] });
   });
 
+  // Helper function to check if workflow should continue
+  const shouldContinue = () => {
+    if (workflowCancelled) {
+      console.log('Workflow cancelled, cleaning up');
+      closeAllPopups();
+      return false;
+    }
+    return true;
+  };
+
   // Helper to race workflow steps against panel close
+  async function raceStep(popupName) {
+    console.log(`Starting raceStep for ${popupName}`);
+    if (workflowCancelled) {
+      console.log('Workflow cancelled before starting popup');
+      return 'cancelled';
+    }
+    
+    try {
+      console.log(`Injecting popup: ${popupName}`);
+      const result = await Promise.race([
+        injectPopup(popupName).catch(error => {
+          console.error(`Error injecting popup ${popupName}:`, error);
+          return 'cancelled';
+        }),
+        panelClosedPromise
+      ]);
+      console.log(`Popup ${popupName} result:`, result);
+      return result;
+    } catch (error) {
+      console.error(`Error in raceStep for ${popupName}:`, error);
+      return 'cancelled';
+    }
+  }
+
+  // Helper to create and inject popups
   async function injectPopup(type) {
     // Remove any existing popup of this type
     let oldPopup = document.getElementById(`${type}-popup`);
@@ -308,6 +455,7 @@ async function runPopupWorkflow(panel) {
                 // Try to cast to int if possible
                 if (!isNaN(feedback)) feedback = parseInt(feedback, 10);
                 updateResultUserTestingFields(type, feedback);
+                console.log('Feedback collected for', type, ':', feedback); 
                 popup.remove();
                 resolved = true;
                 resolve(feedback);
@@ -320,41 +468,79 @@ async function runPopupWorkflow(panel) {
 
   // Helper to race workflow steps against panel close
   async function raceStep(popupName) {
-    return Promise.race([
-      injectPopup(popupName),
-      panelClosedPromise
-    ]);
+    console.log(`Starting raceStep for ${popupName}`);
+    if (workflowCancelled) {
+      console.log('Workflow cancelled before starting popup');
+      return 'cancelled';
+    }
+    
+    try {
+      console.log(`Injecting popup: ${popupName}`);
+      const result = await Promise.race([
+        injectPopup(popupName).catch(error => {
+          console.error(`Error injecting popup ${popupName}:`, error);
+          return 'cancelled';
+        }),
+        panelClosedPromise
+      ]);
+      console.log(`Popup ${popupName} result:`, result);
+      return result;
+    } catch (error) {
+      console.error(`Error in raceStep for ${popupName}:`, error);
+      return 'cancelled';
+    }
   }
 
   // --- Workflow steps ---
+  console.log('Starting QA popup');
   let qaFeedback = await raceStep('QA');
-  if (workflowCancelled || qaFeedback === '__CANCEL__' || qaFeedback === 'cancelled') return 'cancelled';
+  if (!shouldContinue() || qaFeedback === '__CANCEL__' || qaFeedback === 'cancelled') {
+    return 'cancelled';
+  }
 
   if (qaFeedback === 0) {
-    return;
+    return 'completed';
   } else if (qaFeedback === 10) {
+    console.log('Starting novelty popup');
     let noveltyFeedback = await raceStep('novelty');
-    if (workflowCancelled || noveltyFeedback === '__CANCEL__' || noveltyFeedback === 'cancelled') return 'cancelled';
+    console.log('novelty feedback: ', noveltyFeedback);
+    if (!shouldContinue() || noveltyFeedback === '__CANCEL__' || noveltyFeedback === 'cancelled') {
+      return 'cancelled';
+    }
     if (noveltyFeedback === 1) {
-      await raceStep('success');
-      return;
+      if (!shouldContinue()) return 'cancelled';
+      console.log('Starting success popup');
+      let successFeedback = await raceStep('success');
+      console.log('succcess feedback: ', successFeedback);
     }
+    return 'completed';
   } else {
+    console.log('Starting reasoning popup');
     let reasoningFeedback = await raceStep('reasoning');
-    if (workflowCancelled || reasoningFeedback === '__CANCEL__' || reasoningFeedback === 'cancelled') return 'cancelled';
-    if (reasoningFeedback === 0) {
-      await raceStep('datasource');
-      if (workflowCancelled) return 'cancelled';
-      await raceStep('datavalueNeed');
-      if (workflowCancelled) return 'cancelled';
-      await raceStep('datavalueUniqueness');
-      if (workflowCancelled) return 'cancelled';
-      return;
-    } else {
-      return;
+    console.log('reasoning feedback: ', reasoningFeedback);
+    if (!shouldContinue() || reasoningFeedback === '__CANCEL__' || reasoningFeedback === 'cancelled') {
+      return 'cancelled';
     }
+    if (reasoningFeedback === 0) {
+      if (!shouldContinue()) return 'cancelled';
+      console.log('Starting datasource popup');
+      let datasource = await raceStep('datasource');
+      console.log('datasource feedback collected',datasource);
+      
+      if (!shouldContinue()) return 'cancelled';
+      console.log('Starting datavalue need popup');
+      let datavalueNeed = await raceStep('datavalueNeed');
+      console.log('datavalueNeed feedback: ', datavalueNeed);
+      
+      if (!shouldContinue()) return 'cancelled';
+      console.log('Starting datavalue uniqueness popup');
+      let datavalueUniqueness = await raceStep('datavalueUniqueness');
+      console.log('datavalueUniqueness feedback: ', datavalueUniqueness);
+    }
+    return 'completed';
   }
-}
+  }
+
 
 async function runNavigateAwayWorkflow(navigateAwayPanel) {
   console.log('entered runNavigateAwayWorkflow');
@@ -553,9 +739,19 @@ const flagTypes = [
 const observedPanels = new Set();
 
 function setupMutationObserver() {
+  console.log('setupMutationObserver called');
+  // Log all elements with class containing "accordion"
+  const allAccordionElements = document.querySelectorAll('[class*="accordion"]');
+  console.log('All accordion-related elements:', allAccordionElements);
+  
   // Observe accordion panels for open/close
   const panels = document.querySelectorAll('[class*="accordionPanel"]');
-
+  console.log('Found panels:', panels ? panels.length : 0, 'panels');
+  
+  // If no panels found, let's log the entire body HTML for debugging
+  if (!panels || panels.length === 0) {
+    console.log('No panels found. Current body HTML:', document.body.innerHTML);
+  }
   panels.forEach(panel => {
     if (observedPanels.has(panel)) return;
     observedPanels.add(panel);
@@ -565,22 +761,47 @@ function setupMutationObserver() {
         if (mutation.attributeName === 'aria-hidden') {
           const isNowVisible = panel.getAttribute('aria-hidden') === 'false';
           const wasHidden = mutation.oldValue === 'true';
+          console.log('Mutation observed on panel:', panel, { isNowVisible, wasHidden });
 
           if (isNowVisible && wasHidden) {
-            // Handle previous panel if different from new one
+            console.log('Panel opened:', panel);
+            console.log('Current state:', { 
+              currentOpenPanel: currentOpenPanel ? 'exists' : 'null',
+              isPanelDifferent: currentOpenPanel !== panel,
+              workflowPromise: currentWorkflowPromise ? 'exists' : 'null'
+            });
+            console.log('current workflow panel: ', currentOpenPanel);
+            console.log('newly opened panel: ', panel);
             if (currentOpenPanel && currentOpenPanel !== panel) {
-              // Visual close
-              currentOpenPanel.setAttribute('aria-hidden', 'true');
+              console.log('Previous panel exists, cleaning up');
               
-              // Force cleanup of previous workflow
+              // Force cancel any existing workflow
               if (currentWorkflowPromise) {
-                workflowCancelled = true;  // Signal cancellation to any running workflow
-                closeAllPopups();
-                printAndClearTestingObject();
-                closePanel(currentOpenPanel);
-                currentWorkflowPromise = null;
+                console.log('Cancelling existing workflow');
+                workflowCancelled = true;
+                printAndClearTestingObject(); // Send data for the cancelled workflow
+                closeAllPopups(); // Force close any open popups immediately
+                console.log('Previous workflow data sent and cleared');
+                currentWorkflowPromise = null; // Clear the promise immediately
               }
+              try {
+                console.log('Attempting to close previous panel in mutation observer');
+                closePanel(currentOpenPanel);
+                // Wait a moment to ensure the panel starts closing
+                await new Promise(resolve => setTimeout(resolve, 100));
+                // if (currentOpenPanel.getAttribute('aria-hidden') !== 'true') {
+                //   console.warn('Panel did not close properly in mutation observer, forcing close');
+                //   currentOpenPanel.setAttribute('aria-hidden', 'true');
+                // }
+              } catch (e) {
+                console.error('Error closing panel in mutation observer:', e);
+              }
+              currentOpenPanel = null;
             }
+
+            // Reset state for new workflow
+            workflowCancelled = false;
+            console.log('Starting new workflow');
 
             // Start new workflow
             currentOpenPanel = panel;
@@ -606,14 +827,64 @@ function setupMutationObserver() {
 
 
 
-// setupMutationObserver();
-navigateAwayModalObserver();
+// Initialize observers when the DOM is ready or if it's already loaded
+function initializeObservers() {
+  console.log('Initializing observers, document.readyState:', document.readyState);
+  setupMutationObserver();
+  navigateAwayModalObserver();
+}
 
-let dynamicObserver = new MutationObserver(function(mutations) {
+// Check if the DOM is already loaded
+if (document.readyState === 'loading') {
+  console.log('Document still loading, adding DOMContentLoaded listener');
+  document.addEventListener('DOMContentLoaded', initializeObservers);
+} else {
+  console.log('Document already loaded, initializing immediately');
+  initializeObservers();
+}
+
+// Set up periodic check for panels
+function checkForPanels() {
+  const panels = document.querySelectorAll('[class*="accordionPanel"]');
+  if (panels && panels.length > 0) {
+    console.log('Panels found in periodic check:', panels.length);
+    setupMutationObserver();
+  }
+}
+
+// Check every second for 10 seconds
+let checkCount = 0;
+const panelCheckInterval = setInterval(() => {
+  console.log('Periodic panel check:', checkCount + 1);
+  checkForPanels();
+  checkCount++;
+  if (checkCount >= 10) {
+    clearInterval(panelCheckInterval);
+    console.log('Stopped periodic panel checks');
+  }
+}, 1000);
+
+// Also set up dynamic observation for new content
+const dynamicObserver = new MutationObserver(function(mutations) {
+  console.log('Dynamic observer mutation detected');
   mutations.forEach(mutation => {
-    if (mutation.type === 'childList') {
-      setupMutationObserver();
-      navigateAwayModalObserver();
+    if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+      // Only run if we find new panels or modals
+      const hasNewPanels = Array.from(mutation.addedNodes).some(node => {
+        const isPanel = node.nodeType === 1 && node.matches?.('[class*="accordionPanel"]');
+        if (isPanel) console.log('Found new panel:', node);
+        return isPanel;
+      });
+      const hasNewModal = Array.from(mutation.addedNodes).some(node => 
+        node.nodeType === 1 && node.matches?.('[data-testid="navconf-modal"]')
+      );
+      
+      if (hasNewPanels) {
+        setupMutationObserver();
+      }
+      if (hasNewModal) {
+        navigateAwayModalObserver();
+      }
     }
   });
 });
@@ -640,6 +911,13 @@ function extractPredicateIdFromTableItem(tableItem) {
   let rawId = container.getAttribute('data-tooltip-id');
   if (!rawId) return null;
   return rawId.replace(/:r[\w\d]+:?$/, '');
+}
+
+function extractARAFromTableItem(panel) {
+  if (!panel) return null;
+  const container = panel.querySelector('.data-aras');
+  if (!container) return null;
+  return container.classList.contains('data-aras') ? 'data-aras' : null;
 }
 
 
@@ -740,39 +1018,6 @@ tooltipObserver.observe(document.body, { childList: true, subtree: true });
 
 
 /////////////////////////////////////////////////////// session feedback:
-// function navigateAwayModalObserver() {
-//   // Select the modal element by its data-testid
-//   const navigateAwayModal = document.querySelector('[data-testid="navconf-modal"]');
-//   if (!navigateAwayModal) return;
-
-//   // Callback for MutationObserver
-//   const observerCallback = (mutationsList) => {
-//     for (const mutation of mutationsList) {
-//       if (
-//         mutation.type === 'attributes' &&
-//         mutation.attributeName === 'class'
-//       ) {
-//         const classList = navigateAwayModal.className;
-//         // Check if the class includes '_true_1kx79_25'
-//         if (classList.includes('_true_1kx79_25')) {
-//           // Run your workflow
-//           window.currentWorkflowPromise = collectNavigateAwayPanel(navigateAwayModal);
-//         }
-//       }
-//     }
-//   };
-
-//   // Create observer
-//   const observer = new MutationObserver(observerCallback);
-
-//   // Start observing class attribute changes
-//   observer.observe(navigateAwayModal, { attributes: true, attributeFilter: ['class'] });
-
-//   // Optionally, return the observer for later disconnecting/removal
-//   return observer;
-// }
-
-
 // Set up observer for the navigate away modal
 function navigateAwayModalObserver() {
   if (isObservingNavigateModal) {
